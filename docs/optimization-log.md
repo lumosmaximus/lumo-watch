@@ -185,6 +185,22 @@ with the lookup-table ring and the direct SPI path: **65,028 pixels in
 fit a frame next to the second hand, so the lookup table alone is not enough.
 Parked for now (the face as it is refreshes well when the bezel is still).
 
+## 12. A second face on the same engine
+
+The compositor became face-driven: every hand has its own pivot (the
+chronograph's subdial hands turn about points 104 px from the centre), a
+shape, a footprint for the span solver and a dirty-marking extent. The
+sweeping hand (GMT seconds / chrono seconds) takes its dimensions from a
+table. The per-row span solver just measures x relative to each hand's pivot.
+
+- GMT face after the change: 59 fps, sweep stage ~0.5 ms slower (dimensions
+  read from a table instead of compile-time constants).
+- Chronograph face, chrono running: solid 60 fps, ~10.5 ms per frame. It is
+  cheaper than the GMT: fixed bezel, slim hands, and the moving subdial hand is
+  ~50 px long.
+- Buttons: core 0 turns BOOT (a GPIO input event) and PWR (polled over I2C
+  from the I/O expander, whose interrupt pin is not wired) into IPM messages.
+
 ## Concurrency and timing techniques used
 
 - AMP: one core per job, separate images, no shared scheduler.

@@ -14,6 +14,17 @@
 #define MSG_STATS 2 /* core 1 -> core 0: frames drawn, for the fps readout */
 #define MSG_TOUCH 3 /* core 0 -> core 1 */
 #define MSG_BENCH 4 /* core 1 -> core 0: startup micro-benchmark, cycles per pixel x10 */
+#define MSG_BUTTON 5 /* core 0 -> core 1: a button event */
+
+enum {
+	BTN_PWR = 1,       /* PWR pressed */
+	BTN_BOOT = 2,      /* BOOT pressed and released within 3 s */
+	BTN_BOOT_LONG = 3, /* BOOT held for 3 s (face picker) */
+};
+
+struct msg_button {
+	uint8_t btn;
+};
 
 struct msg_bench {
 	uint32_t seq_read, band_read, compute, internal_read, box_plain, box_hands;

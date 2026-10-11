@@ -2,8 +2,12 @@
  * Copyright (c) 2026 Adi Nandanamudi
  * SPDX-License-Identifier: Apache-2.0
  *
- * Watch, core 0 side: owns the RTC and touch, tells core 1 the time and
- * prints core 1's frame rate.
+ * Watch, core 0 side: owns the RTC, touch and buttons, tells core 1 the time
+ * and the button presses, and prints core 1's frame rate.
+ *
+ * Buttons: BOOT (GPIO0, a gpio-keys input) short press, or held 3 s (face
+ * picker); PWR read from the I/O expander (EXIO4, high while pressed), whose
+ * interrupt line is not wired, so it is polled.
  *
  * The RTC only has 1 s resolution, so we wait for its seconds to change and
  * send the time right then: core 1 counts milliseconds from that edge, which
@@ -48,9 +52,39 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 	}
 }
 
+static void send_button(uint8_t btn)
+{
+	struct msg_button mb = {.btn = btn};
+
+	ipm_send(ipm, -1, MSG_BUTTON, &mb, sizeof(mb));
+}
+
+/* BOOT held for 3 s: fires once while still held */
+static bool boot_long_sent;
+
+static void boot_long(struct k_work *w)
+{
+	boot_long_sent = true;
+	send_button(BTN_BOOT_LONG);
+}
+static K_WORK_DELAYABLE_DEFINE(boot_long_work, boot_long);
+
 static void on_input(struct input_event *evt, void *user_data)
 {
 	static struct msg_touch t;
+
+	if (evt->code == INPUT_KEY_0) { /* BOOT */
+		if (evt->value) {
+			boot_long_sent = false;
+			k_work_reschedule(&boot_long_work, K_MSEC(3000));
+		} else {
+			k_work_cancel_delayable(&boot_long_work);
+			if (!boot_long_sent) {
+				send_button(BTN_BOOT);
+			}
+		}
+		return;
+	}
 
 	if (evt->code == INPUT_ABS_X) {
 		t.x = evt->value;
@@ -109,6 +143,28 @@ static void send_time_on_edge(void)
 	printk("time -> core 1: %04u-%02u-%02u %02u:%02u:%02u\n", mt.year, mt.month, mt.day,
 	       mt.hour, mt.min, mt.sec);
 }
+
+/* PWR: poll the expander every 20 ms, report presses */
+static void pwr_poll(void *a, void *b, void *c)
+{
+	const struct device *exio = DEVICE_DT_GET(DT_NODELABEL(exio));
+	bool was = false;
+
+	if (!device_is_ready(exio) || gpio_pin_configure(exio, 4, GPIO_INPUT) != 0) {
+		printk("PWR key: expander not ready\n");
+		return;
+	}
+	while (1) {
+		bool down = gpio_pin_get(exio, 4) > 0;
+
+		if (down && !was) {
+			send_button(BTN_PWR);
+		}
+		was = down;
+		k_msleep(20);
+	}
+}
+K_THREAD_DEFINE(pwr_tid, 1024, pwr_poll, NULL, NULL, NULL, 5, 0, 500);
 
 int main(void)
 {

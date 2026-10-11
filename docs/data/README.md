@@ -28,6 +28,8 @@ was being turned show a large `ring` value.
 | 12-ram-overlap-fix | core 0 RAM carve-out fixed | timing unchanged |
 | 13-cache-removed | cache removed, direct SPI kept | ~12 ms frames; dips only when turning the bezel or hands overlap |
 | 14-lut-bezel-full-ring-bench | LUT bezel + direct SPI, boot benchmark of one bezel click | whole ring (65k px) repainted in 34.9 ms: two frames too long |
+| 15-faces-refactor-gmt | two-face compositor (generic hands with pivots), GMT face | 59 fps, sweep stage ~0.5 ms slower than before |
+| 16-chronograph-running | chronograph face (test build started on it, chrono running) | solid 60 fps, ~10.5 ms frames |
 
 Captured with `tools/capture/cap.py <seconds>` (resets the board through the
 USB-serial DTR/RTS lines, then records).
