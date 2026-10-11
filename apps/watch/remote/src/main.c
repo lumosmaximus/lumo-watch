@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Watch, core 1 side: watch faces with their own small compositor (no LVGL),
- * built for a gliding sweep hand at the panel's refresh rate. Two faces: a
- * GMT (rotating bezel, date) and a chronograph (fixed tachymeter, subdials;
- * PWR starts/stops, BOOT resets). Holding BOOT 3 s opens a face picker.
+ * built for a gliding sweep hand at the panel's refresh rate. Faces: a GMT
+ * (rotating bezel, date) and a chronograph in black or white (fixed
+ * tachymeter, subdials; PWR starts/stops, BOOT resets). Holding BOOT 3 s
+ * opens a face picker.
  *
  * Per frame:
  *   1. wait for the panel's tearing-effect pulse (TE, GPIO13), so a frame is
@@ -88,7 +89,8 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 /* Faces: the GMT (Rolex style, rotating bezel, date) and the chronograph
  * (moon-watch style, fixed tachymeter, three subdials).
  */
-enum { FACE_GMT, FACE_CHRONO, NFACES };
+enum { FACE_GMT, FACE_CHRONO, FACE_CHRONO_WHITE, NFACES };
+#define BOOT_FACE FACE_CHRONO_WHITE /* not remembered across resets yet */
 static int face = FACE_GMT;
 
 /* The sweeping hand (GMT: seconds; chronograph: chrono seconds), distances
@@ -96,15 +98,22 @@ static int face = FACE_GMT;
  */
 struct sweep {
 	float tip, tail, halfw, dot, cw, cwr, cwk, cap, capk;
+	float loz;     /* centre of an open lozenge along the hand (0: none) */
+	uint8_t r, g, b; /* hand colour */
 	int mr; /* dirty-band radius: widest part + shadow + blur */
 };
 static const struct sweep sweep_gmt = {
 	.tip = 196, .tail = -40, .halfw = 1.3f, .dot = 130, .cw = -32, .cwr = 6,
-	.cwk = 1.0f / 13, .cap = 6.5f, .capk = 1.0f / 14, .mr = 17,
+	.cwk = 1.0f / 13, .cap = 6.5f, .capk = 1.0f / 14, .r = 240, .g = 240, .b = 242, .mr = 17,
 };
 static const struct sweep sweep_chrono = {
 	.tip = 192, .tail = -42, .halfw = 1.0f, .dot = 0, .cw = -30, .cwr = 4.5f,
-	.cwk = 1.0f / 10, .cap = 5.5f, .capk = 1.0f / 12, .mr = 12,
+	.cwk = 1.0f / 10, .cap = 5.5f, .capk = 1.0f / 12, .r = 240, .g = 240, .b = 242, .mr = 12,
+};
+static const struct sweep sweep_chrono_white = {
+	.tip = 192, .tail = -42, .halfw = 1.0f, .dot = 0, .cw = -30, .cwr = 4.5f,
+	.cwk = 1.0f / 10, .cap = 5.5f, .capk = 1.0f / 12, .loz = 150, .r = 26, .g = 54,
+	.b = 128, .mr = 12,
 };
 static struct sweep sw = sweep_gmt;
 static float sec_sn, sec_cs;
@@ -209,6 +218,16 @@ static ALWAYS_INLINE void sec_cover(float s, float p, float *a_white, float *a_g
 		*a_gold = disc(d2, 8.0f, 1.0f / 17.0f);
 		*a_lume = disc(d2, 5.5f, 1.0f / 12.0f);
 	}
+	if (sw.loz && fabsf(s - sw.loz) < 11 && fabsf(p) < 5) {
+		/* open lozenge: outer diamond (half-lengths 10 x 4) minus inner (7 x 2.2);
+		 * distance to a diamond edge ~ (|ds|/a + |p|/b - 1) * ab / sqrt(a^2 + b^2)
+		 */
+		float ds = fabsf(s - sw.loz), ap = fabsf(p);
+		float outer = clamp01(0.5f - (ds / 10 + ap / 4 - 1) * 3.71f);
+		float inner = clamp01(0.5f - (ds / 7 + ap / 2.2f - 1) * 2.10f);
+
+		w = fmx(w, outer - inner);
+	}
 	*a_white = w;
 }
 
@@ -234,6 +253,9 @@ static const struct region sec_regions[4] = {
 };
 static const struct region chrono_regions[4] = {
 	{-42, 192, 5}, {-36, -24, 9}, {-8, 8, 9.5f}, {0, 0, -1},
+};
+static const struct region chrono_white_regions[4] = {
+	{-42, 192, 5}, {-36, -24, 9}, {-8, 8, 9.5f}, {138, 162, 8.5f},
 };
 static const struct region *sweep_rg = sec_regions;
 
@@ -278,9 +300,8 @@ static void region_span(const struct region *rg, int n, float sn, float cs, floa
 #define LUME_R 236
 #define LUME_G 240
 #define LUME_B 222
-#define STEEL_R 226
-#define STEEL_G 228
-#define STEEL_B 232
+/* chronograph hand colours (set per face) */
+static struct rgb ch_body = {226, 228, 232}, ch_lume = {236, 240, 222};
 
 /* coverage of a band |p| <= hw for s in [s0, s1] (flat ends) */
 static ALWAYS_INLINE float bar(float s, float p, float s0, float s1, float hw)
@@ -375,13 +396,17 @@ static ALWAYS_INLINE bool vhand_px(int k, float s, float p, struct rgb *c)
 	}
 	if (body > 0) {
 		if (steel) {
-			over(c, STEEL_R, STEEL_G, STEEL_B, (int)(body * 255));
+			over(c, ch_body.r, ch_body.g, ch_body.b, (int)(body * 255));
 		} else {
 			over(c, GOLD_R, GOLD_G, GOLD_B, (int)(body * 255));
 		}
 	}
 	if (lume > 0) {
-		over(c, LUME_R, LUME_G, LUME_B, (int)(lume * 255));
+		if (steel) {
+			over(c, ch_lume.r, ch_lume.g, ch_lume.b, (int)(lume * 255));
+		} else {
+			over(c, LUME_R, LUME_G, LUME_B, (int)(lume * 255));
+		}
 	}
 	if (red > 0) {
 		over(c, 214, 36, 44, (int)(red * 255));
@@ -482,7 +507,8 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 {
 	uint32_t pt0 = k_cycle_get_32();
 	const bool gmt_face = face == FACE_GMT;
-	const uint16_t *dial = (const uint16_t *)(gmt_face ? watch_dial : speed_dial);
+	const uint16_t *dial = (const uint16_t *)(gmt_face ? watch_dial :
+						  face == FACE_CHRONO ? speed_dial : speed_white_dial);
 	const int w = x1 - x0 + 1, h = y1 - y0 + 1;
 	const int dx0 = WATCH_DATE_CX - WATCH_DATE_W / 2, dy0 = WATCH_DATE_CY - WATCH_DATE_H / 2;
 	const uint16_t *date = gmt_face && date_day ? (const uint16_t *)watch_dates +
@@ -494,7 +520,7 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 		    fxm * fxm + fym * fym > (WATCH_BEZEL_IN - 1) * (WATCH_BEZEL_IN - 1);
 	const bool sweep_on = swb_x1 >= x0 && swb_x0 <= x1 && swb_y1 >= y0 && swb_y0 <= y1;
 	/* plain-shaft stretch of the sweep hand ends at its lume dot, if any */
-	const float d0 = sw.dot ? sw.dot : sw.tip + 10;
+	const float d0 = sw.dot ? sw.dot : (sw.loz ? sw.loz : sw.tip + 10);
 
 	for (int k = 0; k < nhands; k++) {
 		hand_on[k] = hb_x1[k] >= x0 && hb_x0[k] <= x1 && hb_y1[k] >= y0 && hb_y0[k] <= y1;
@@ -661,7 +687,7 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 				over(&c, 236, 240, 222, (int)(al * 255));
 			}
 			if (aw > 0) {
-				over(&c, 240, 240, 242, (int)(aw * 255));
+				over(&c, sw.r, sw.g, sw.b, (int)(aw * 255));
 			}
 			o[x - x0] = to565(&c);
 		}
@@ -903,8 +929,17 @@ static void face_setup(int f)
 		hands[4] = (struct hand){.px = CX, .py = CX, .shape = SH_CH_MIN, .tail = -20,
 					 .tip = 166, .reach = 10, .mtail = -24, .mtip = 170,
 					 .mr = 15};
-		sw = sweep_chrono;
-		sweep_rg = chrono_regions;
+		if (f == FACE_CHRONO) {
+			sw = sweep_chrono;
+			sweep_rg = chrono_regions;
+			ch_body = (struct rgb){226, 228, 232};
+			ch_lume = (struct rgb){236, 240, 222};
+		} else { /* white dial, blue hands with white lume */
+			sw = sweep_chrono_white;
+			sweep_rg = chrono_white_regions;
+			ch_body = (struct rgb){26, 54, 128};
+			ch_lume = (struct rgb){250, 250, 250};
+		}
 	}
 }
 
@@ -978,8 +1013,9 @@ static void draw_full(void)
 
 K_MSGQ_DEFINE(buttons, sizeof(uint8_t), 8, 1);
 
-#define PICK_R  104 /* thumbnail radius */
-static const int pick_cx[NFACES] = {117, 349};
+#define PICK_R  84 /* thumbnail radius */
+static const int pick_cx[NFACES] = {233, 138, 328};
+static const int pick_cy[NFACES] = {128, 300, 300};
 
 /* Bezel colour at (x, y) at the current turn, or bg if not on the ring. */
 static uint16_t ring_at(int x, int y, uint16_t bg)
@@ -1004,11 +1040,12 @@ static uint16_t ring_at(int x, int y, uint16_t bg)
 	return bg;
 }
 
-/* Both faces as round thumbnails side by side, the selected one ringed. */
+/* The faces as round thumbnails, the selected one ringed. */
 static void draw_picker(int sel)
 {
 	const uint16_t *dials[NFACES] = {(const uint16_t *)watch_dial,
-					 (const uint16_t *)speed_dial};
+					 (const uint16_t *)speed_dial,
+					 (const uint16_t *)speed_white_dial};
 	const int k = (int)(CX * 256 / PICK_R); /* dial pixels per thumbnail pixel, x256 */
 
 	for (int y0 = 0; y0 < N; y0 += BAND) {
@@ -1016,13 +1053,12 @@ static void draw_picker(int sel)
 
 		for (int y = y0; y < y0 + h; y++) {
 			uint16_t *o = &buf[(y - y0) * N];
-			int dy = y - (int)CX;
-
 			for (int x = 0; x < N; x++) {
 				uint16_t v = 0;
 
 				for (int f = 0; f < NFACES; f++) {
-					int dx = x - pick_cx[f], d2 = dx * dx + dy * dy;
+					int dx = x - pick_cx[f], dy = y - pick_cy[f];
+					int d2 = dx * dx + dy * dy;
 
 					if (d2 < PICK_R * PICK_R) {
 						int sx = (int)CX + dx * k / 256, sy = (int)CX + dy * k / 256;
@@ -1066,8 +1102,18 @@ static int pick_face(void)
 		}
 		if (touch_new) {
 			touch_new = false;
-			if (touch.down) {
-				return touch.x < CX ? 0 : 1;
+			if (touch.down) { /* the nearest thumbnail */
+				int best = 0, bd = INT32_MAX;
+
+				for (int f = 0; f < NFACES; f++) {
+					int dx = touch.x - pick_cx[f], dy = touch.y - pick_cy[f];
+
+					if (dx * dx + dy * dy < bd) {
+						bd = dx * dx + dy * dy;
+						best = f;
+					}
+				}
+				return best;
 			}
 		}
 	}
@@ -1086,7 +1132,7 @@ static void handle_buttons(void)
 			draw_full();
 			continue;
 		}
-		if (face != FACE_CHRONO) {
+		if (face == FACE_GMT) {
 			continue;
 		}
 		if (btn == BTN_PWR) {
@@ -1116,7 +1162,7 @@ int main(void)
 	}
 
 	/* first frame: everything (hands at 12 until the time arrives) */
-	face_setup(FACE_GMT);
+	face_setup(BOOT_FACE);
 	draw_full();
 	display_blanking_off(disp);
 

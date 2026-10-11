@@ -33,6 +33,17 @@ LUME = (236, 240, 222)
 BLACK = (8, 8, 9)
 BEZEL_BLACK = (14, 14, 16)
 
+# colour themes: the classic black dial, and white with a blue ceramic bezel
+THEMES = {
+    "black": dict(dial=BLACK, bezel=BEZEL_BLACK, bezel_ink=WHITE, ink=INK, index=WHITE,
+                  double=True, lume=LUME, sub=(20, 20, 22), groove=(26, 26, 29),
+                  sub_edge=(70, 70, 74), sub_ink=INK, text=WHITE),
+    "white": dict(dial=(244, 244, 242), bezel=(30, 52, 120), bezel_ink=(240, 242, 246),
+                  ink=(46, 56, 86), index=(26, 54, 128), double=False, lume=None,
+                  sub=(232, 232, 233), groove=(222, 222, 224), sub_edge=(196, 198, 204),
+                  sub_ink=(26, 54, 128), text=(26, 54, 128)),
+}
+
 
 def polar_at(cx, cy, r, deg):
     a = math.radians(deg - 90)
@@ -60,9 +71,25 @@ def ring_label(img, txt, r, deg, f, fill):
     img.alpha_composite(tmp, (int(x * SS - tmp.width / 2), int(y * SS - tmp.height / 2)))
 
 
-def draw_bezel(img, d):
+def arc_text(img, txt, r, deg, f, fill):
+    """Text along the ring, centred at clock angle deg, each letter turned to
+    follow the curve (reads clockwise, for the upper half)."""
+    widths = [f.getlength(ch) / SS for ch in txt]
+    a = math.radians(deg) - sum(widths) / r / 2
+    for ch, w in zip(txt, widths):
+        mid = a + w / 2 / r
+        tmp = Image.new("RGBA", (40 * SS, 40 * SS), (0, 0, 0, 0))
+        ImageDraw.Draw(tmp).text((20 * SS, 20 * SS), ch, font=f, fill=fill, anchor="mm")
+        tmp = tmp.rotate(-math.degrees(mid), resample=Image.BICUBIC)
+        x, y = polar_at(C, C, r, math.degrees(mid))
+        img.alpha_composite(tmp, (int(x * SS - tmp.width / 2), int(y * SS - tmp.height / 2)))
+        a += w / r
+
+
+def draw_bezel(img, d, t):
+    WHITE = t["bezel_ink"]
     d.ellipse(S([(C - BEZEL_OUT, C - BEZEL_OUT), (C + BEZEL_OUT, C + BEZEL_OUT)]),
-              fill=BEZEL_BLACK)
+              fill=t["bezel"])
     d.ellipse(S([(C - BEZEL_IN, C - BEZEL_IN), (C + BEZEL_IN, C + BEZEL_IN)]), fill=(0, 0, 0))
     # tachymeter: speed = 3600 / seconds; the scale starts at 7.2 s (500)
     f = font("Arial Bold.ttf", 13)
@@ -79,16 +106,21 @@ def draw_bezel(img, d):
         if (v > 200 and v % 50) or (100 < v <= 200 and v % 10) or (v <= 100 and v % 5):
             continue
         tick(d, C, C, BEZEL_IN + 1, BEZEL_IN + 4, 3600 / v * 6, 1.0, WHITE)
-    text_on_ring(img, "TACHYMETRE", 217, 18, font("Arial.ttf", 10), WHITE)
+    # dots beside each label, like the real scale
+    for v in labelled:
+        x, y = polar_at(C, C, BEZEL_IN + 10, 3600 / v * 6)
+        d.ellipse(S([(x - 1.1, y - 1.1), (x + 1.1, y + 1.1)]), fill=WHITE)
+    arc_text(img, "TACHYMETRE", 216, 21, font("Arial Bold.ttf", 12), WHITE)
 
 
-def subdial(img, d, cx, cy, kind):
-    # recessed, slightly lighter, with concentric grooves
-    d.ellipse(S([(cx - SUB_R, cy - SUB_R), (cx + SUB_R, cy + SUB_R)]), fill=(20, 20, 22))
+def subdial(img, d, cx, cy, kind, t):
+    INK = t["sub_ink"]
+    # recessed, with concentric grooves
+    d.ellipse(S([(cx - SUB_R, cy - SUB_R), (cx + SUB_R, cy + SUB_R)]), fill=t["sub"])
     for r in range(SUB_R - 2, 10, -3):
-        d.ellipse(S([(cx - r, cy - r), (cx + r, cy + r)]), outline=(26, 26, 29),
+        d.ellipse(S([(cx - r, cy - r), (cx + r, cy + r)]), outline=t["groove"],
                   width=max(1, SS // 2))
-    d.ellipse(S([(cx - SUB_R, cy - SUB_R), (cx + SUB_R, cy + SUB_R)]), outline=(70, 70, 74),
+    d.ellipse(S([(cx - SUB_R, cy - SUB_R), (cx + SUB_R, cy + SUB_R)]), outline=t["sub_edge"],
               width=SS)
     f = font("Arial.ttf", 11)
     if kind == "sec":          # running seconds: 60 ticks, 20 / 40 / 60
@@ -116,11 +148,13 @@ def subdial(img, d, cx, cy, kind):
             text_at(d, str(v), x, y, f, INK)
 
 
-def dial():
+def dial(theme="black"):
+    t = THEMES[theme]
+    INK, WHITE, LUME = t["ink"], t["index"], t["lume"]
     img = Image.new("RGBA", (SIZE * SS, SIZE * SS), (0, 0, 0, 255))
     d = ImageDraw.Draw(img)
-    draw_bezel(img, d)
-    d.ellipse(S([(C - DIAL, C - DIAL), (C + DIAL, C + DIAL)]), fill=BLACK)
+    draw_bezel(img, d, t)
+    d.ellipse(S([(C - DIAL, C - DIAL), (C + DIAL, C + DIAL)]), fill=t["dial"])
 
     # 1/5 second track: 300 ticks, longer every second, longest every 5 s
     for i in range(300):
@@ -138,48 +172,52 @@ def dial():
         deg = h * 30
         r0 = 150 if h not in (3, 6, 9) else 160
         r1 = 176
-        for off in (-2.2, 2.2):   # double-line baton
+        for off in ((-2.2, 2.2) if t["double"] else (0,)):   # double-line or solid
             a = math.radians(deg - 90)
             ox, oy = -math.sin(a) * off, math.cos(a) * off
             x0, y0 = polar_at(C, C, r0, deg)
             x1, y1 = polar_at(C, C, r1, deg)
-            d.line(S([(x0 + ox, y0 + oy), (x1 + ox, y1 + oy)]), fill=WHITE, width=int(2.6 * SS))
-        x, y = polar_at(C, C, 180, deg)
-        d.ellipse(S([(x - 2.4, y - 2.4), (x + 2.4, y + 2.4)]), fill=LUME)
+            d.line(S([(x0 + ox, y0 + oy), (x1 + ox, y1 + oy)]), fill=WHITE,
+                   width=int((2.6 if t["double"] else 4.2) * SS))
+        if LUME:
+            x, y = polar_at(C, C, 180, deg)
+            d.ellipse(S([(x - 2.4, y - 2.4), (x + 2.4, y + 2.4)]), fill=LUME)
 
-    subdial(img, d, C - SUB_OFF, C, "sec")
-    subdial(img, d, C + SUB_OFF, C, "min")
-    subdial(img, d, C, C + SUB_OFF, "hour")
+    subdial(img, d, C - SUB_OFF, C, "sec", t)
+    subdial(img, d, C + SUB_OFF, C, "min", t)
+    subdial(img, d, C, C + SUB_OFF, "hour", t)
 
-    text_at(d, "ZEPHYR", C, C - 92, font("Arial Bold.ttf", 17), WHITE)
-    text_at(d, "CHRONOGRAPH", C, C - 58, font("Arial.ttf", 12), INK)
-    text_at(d, "DUAL CORE · AMP", C, C - 42, font("Arial.ttf", 10), INK)
+    text_at(d, "ZEPHYR", C, C - 92, font("Arial Bold.ttf", 17), t["text"])
+    text_at(d, "CHRONOGRAPH", C, C - 58, font("Arial.ttf", 12), t["text"])
+    text_at(d, "DUAL CORE · AMP", C, C - 42, font("Arial.ttf", 10), t["text"])
     return img.resize((SIZE, SIZE), Image.LANCZOS).convert("RGB")
 
 
 def preview():
-    img = dial()
-    img.save("speed_preview.png")
-    print("speed_preview.png")
+    for theme in THEMES:
+        dial(theme).save(f"speed_preview_{theme}.png")
+        print(f"speed_preview_{theme}.png")
 
 
 def export(out):
-    img = dial()
-    px = img.load()
-    data = bytearray()
-    for y in range(SIZE):
-        for x in range(SIZE):
-            v = rgb565(*px[x, y])
-            data += bytes((v & 0xff, v >> 8))
+    arrays = {"black": "speed_dial", "white": "speed_white_dial"}
     with open(os.path.join(out, "speed_img.c"), "w") as f:
         f.write("/* Generated by tools/watchface/speedmaster.py - do not edit. */\n\n")
         f.write('#include "speed_img.h"\n\n')
-        f.write(c_array("speed_dial", data))
+        for theme, name in arrays.items():
+            px = dial(theme).load()
+            data = bytearray()
+            for y in range(SIZE):
+                for x in range(SIZE):
+                    v = rgb565(*px[x, y])
+                    data += bytes((v & 0xff, v >> 8))
+            f.write(c_array(name, data))
     with open(os.path.join(out, "speed_img.h"), "w") as f:
         f.write("/* Generated by tools/watchface/speedmaster.py - do not edit. */\n\n")
         f.write("#ifndef SPEED_IMG_H_\n#define SPEED_IMG_H_\n\n#include <stdint.h>\n#include <zephyr/toolchain.h>\n\n")
         f.write(f"#define SPEED_SUB_OFF {SUB_OFF}\n#define SPEED_SUB_R {SUB_R}\n\n")
-        f.write("extern const uint8_t speed_dial[]; /* RGB565 little-endian, 466 x 466 */\n\n")
+        f.write("extern const uint8_t speed_dial[];       /* black, RGB565 LE, 466 x 466 */\n")
+        f.write("extern const uint8_t speed_white_dial[]; /* white, RGB565 LE, 466 x 466 */\n\n")
         f.write("#endif\n")
     print("wrote speed_img.c/.h in", out)
 

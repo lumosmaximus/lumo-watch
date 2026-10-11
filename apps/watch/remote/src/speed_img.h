@@ -9,6 +9,7 @@
 #define SPEED_SUB_OFF 104
 #define SPEED_SUB_R 50
 
-extern const uint8_t speed_dial[]; /* RGB565 little-endian, 466 x 466 */
+extern const uint8_t speed_dial[];       /* black, RGB565 LE, 466 x 466 */
+extern const uint8_t speed_white_dial[]; /* white, RGB565 LE, 466 x 466 */
 
 #endif
