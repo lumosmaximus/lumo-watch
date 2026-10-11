@@ -13,6 +13,7 @@
 #define AMP_MAGIC     0x4c554d4fu /* "LUMO" */
 #define AMP_MSG_PING  1
 #define AMP_MSG_PONG  2
+#define AMP_MSG_TOUCH 3 /* core 0 -> core 1: a touch point to draw */
 
 struct amp_ping {
 	uint32_t magic;
@@ -26,6 +27,12 @@ struct amp_pong {
 	uint32_t core_id;  /* from the PRID register: 0 = PROCPU, 1 = APPCPU */
 	int32_t disp_err;  /* 0 = test pattern drawn, else the error */
 	uint32_t draw_ms;  /* time to render + send the full pattern */
+};
+
+struct amp_touch {
+	uint16_t x;
+	uint16_t y;
+	uint8_t down;
 };
 
 #endif

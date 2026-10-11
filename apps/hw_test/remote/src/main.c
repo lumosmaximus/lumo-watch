@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Hardware test, core 1 side: draw a boundary/orientation test pattern on
- * the CO5300 in 16-row strips (no frame buffer), then answer core 0's pings
- * with our core ID and how the drawing went.
+ * the CO5300 in 16-row strips (no frame buffer), draw a dot wherever core 0
+ * reports a touch, and answer core 0's pings with our core ID and how the
+ * drawing went.
  *
  * Pattern: white 1 px ring on the very edge (r 232), cyan ring at r 228,
  * grey rings every 20 px, red crosshair, white centre dot, green ticks every
@@ -23,24 +24,40 @@
 
 #include "../../common/amp_msg.h"
 
-#define W     466
-#define H     466
-#define ROWS  16
+#define W    466
+#define H    466
+#define ROWS 16
 
 static const struct device *const ipm = DEVICE_DT_GET(DT_NODELABEL(ipm0));
 static const struct device *const disp = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
-static struct amp_ping ping;
-static K_SEM_DEFINE(ping_sem, 0, 1);
 static int32_t disp_err = -ENODEV;
 static uint32_t draw_ms;
 
 /* one strip, internal RAM, sent straight to the SPI DMA */
 static uint8_t strip[W * ROWS * 2] __aligned(4);
 
+/* IPM callbacks run in an interrupt: copy the message, let main() act on it */
+struct msg {
+	uint32_t id;
+	union {
+		struct amp_ping ping;
+		struct amp_touch touch;
+	};
+};
+K_MSGQ_DEFINE(msgs, sizeof(struct msg), 16, 4);
+
 static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volatile void *data)
 {
-	memcpy(&ping, (const void *)data, sizeof(ping));
-	k_sem_give(&ping_sem);
+	struct msg m = {.id = id};
+
+	if (id == AMP_MSG_PING) {
+		memcpy(&m.ping, (const void *)data, sizeof(m.ping));
+	} else if (id == AMP_MSG_TOUCH) {
+		memcpy(&m.touch, (const void *)data, sizeof(m.touch));
+	} else {
+		return;
+	}
+	(void)k_msgq_put(&msgs, &m, K_NO_WAIT);
 }
 
 static uint32_t core_id(void)
@@ -109,9 +126,7 @@ static uint16_t pattern(int x, int y)
 
 static int draw_pattern(void)
 {
-	struct display_buffer_descriptor desc = {
-		.buf_size = sizeof(strip), .width = W, .pitch = W,
-	};
+	struct display_buffer_descriptor desc = {.width = W, .pitch = W};
 
 	for (int y0 = 0; y0 < H; y0 += ROWS) {
 		int rows = MIN(ROWS, H - y0);
@@ -136,6 +151,25 @@ static int draw_pattern(void)
 	return 0;
 }
 
+/* A 13x13 yellow dot centred on the touch: a small window write. */
+static void draw_dot(int cx, int cy)
+{
+	static uint8_t dot[13 * 13 * 2] __aligned(4);
+	int x0 = CLAMP(cx - 6, 0, W - 13), y0 = CLAMP(cy - 6, 0, H - 13);
+	struct display_buffer_descriptor d = {.buf_size = sizeof(dot), .width = 13,
+					      .height = 13, .pitch = 13};
+
+	for (int i = 0; i < 13 * 13; i++) {
+		int px = x0 + i % 13, py = y0 + i / 13;
+		int dx = px - cx, dy = py - cy;
+		uint16_t p = dx * dx + dy * dy <= 36 ? rgb(255, 230, 0) : pattern(px, py);
+
+		dot[2 * i] = p >> 8;
+		dot[2 * i + 1] = p & 0xff;
+	}
+	display_write(disp, x0, y0, &d, dot);
+}
+
 int main(void)
 {
 	ipm_register_callback(ipm, on_ipm, NULL);
@@ -152,11 +186,19 @@ int main(void)
 	}
 
 	while (1) {
-		k_sem_take(&ping_sem, K_FOREVER);
-		if (ping.magic != AMP_MAGIC) {
+		struct msg m;
+
+		k_msgq_get(&msgs, &m, K_FOREVER);
+		if (m.id == AMP_MSG_TOUCH) {
+			if (m.touch.down && disp_err == 0) {
+				draw_dot(m.touch.x, m.touch.y);
+			}
 			continue;
 		}
-		struct amp_pong pong = {.seq = ping.seq, .core1_ms = k_uptime_get_32(),
+		if (m.ping.magic != AMP_MAGIC) {
+			continue;
+		}
+		struct amp_pong pong = {.seq = m.ping.seq, .core1_ms = k_uptime_get_32(),
 					.core_id = core_id(), .disp_err = disp_err,
 					.draw_ms = draw_ms};
 

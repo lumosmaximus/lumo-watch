@@ -68,8 +68,14 @@ static void on_input(struct input_event *evt, void *user_data)
 		}
 		atomic_set(&touch_down, evt->value);
 		if (evt->sync) {
-			printk("  [touch %s at %ld,%ld]\n", evt->value ? "down" : "up  ",
-			       atomic_get(&touch_x), atomic_get(&touch_y));
+			struct amp_touch t = {.x = atomic_get(&touch_x), .y = atomic_get(&touch_y),
+					      .down = evt->value};
+
+			/* core 1 draws a dot there: proves touch and display agree */
+			ipm_send(ipm, -1, AMP_MSG_TOUCH, &t, sizeof(t));
+			if (!evt->value) {
+				printk("  [touch up at %u,%u]\n", t.x, t.y);
+			}
 		}
 		break;
 	default:
