@@ -38,14 +38,19 @@
 		};
 	};
 
-	/* TF card, native SDMMC 1-bit: CMD 1, CLK 2, D0 3 (D3/CS on 41). */
-	sdhc0_default: sdhc0_default {
+	/* TF card, native SDMMC 1-bit: CMD 1, CLK 2, D0 3. D3/CS (GPIO41) is NOT
+	 * given to the controller: the card samples D3 at reset (high = SD mode,
+	 * low = SPI mode), and the board's 10k pull-up keeps it high. Routing it
+	 * here let the host pull it low, the card woke in SPI mode and ignored
+	 * CMD8 ("card never left busy state").
+	 */
+	sdhc1_default: sdhc1_default {
 		group1 {
-			pinmux = <SDHC0_CLKOUT_GPIO2>,
-				 <SDHC0_CMD_GPIO1>,
-				 <SDHC0_DATA0_GPIO3>,
-				 <SDHC0_DATA3_GPIO41>;
+			pinmux = <SDHC1_CMD_GPIO1>,
+				 <SDHC1_CLKOUT_GPIO2>,
+				 <SDHC1_DATA0_GPIO3>;
 			bias-pull-up;
+			output-high;
 		};
 	};
 

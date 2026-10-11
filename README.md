@@ -29,3 +29,16 @@ partition (0xbc0000).
 
 - `apps/amp_hello`: dual-core bring-up. Core 0 scans I2C, dumps the AXP2101
   rails and pings core 1, which answers with its uptime and core ID.
+- `apps/hw_test`: checks every peripheral at boot, then prints a live line:
+  mic levels (ES7210), IMU, BOOT/PWR buttons, touch (CST9217), RTC, TF card
+  (SDMMC), AXP2101 power, core 1 alive. Speaker output is not tested.
+
+## Drivers in this repo
+
+- `hynitron,cst9217`: CST9217 touch controller (input subsystem)
+- `everest,es7210`, `everest,es8311`: mic ADC and speaker codec (audio_codec)
+
+## Notes
+
+- TF card: some cards answer but never finish initialising (an 8 GB card
+  stayed busy on ACMD41 forever); a 16 GB SDHC card works.

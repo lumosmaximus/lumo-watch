@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config AUDIO_CODEC_ES8311
+	bool "ES8311 mono codec (DAC path)"
+	default y
+	depends on DT_HAS_EVEREST_ES8311_ENABLED
+	depends on AUDIO_CODEC
+	select I2C
+	help
+	  Everest ES8311, used here as the speaker DAC (I2S target, MCLK in).
+
+config AUDIO_CODEC_ES7210
+	bool "ES7210 4-channel ADC"
+	default y
+	depends on DT_HAS_EVEREST_ES7210_ENABLED
+	depends on AUDIO_CODEC
+	select I2C
+	help
+	  Everest ES7210 microphone ADC (I2S target, MCLK in). MIC1/MIC2 in
+	  standard I2S stereo; TDM for MIC3/MIC4 is not supported yet.

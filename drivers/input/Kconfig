@@ -1,0 +1,22 @@
+# Copyright (c) 2026 Adi Nandanamudi
+# SPDX-License-Identifier: Apache-2.0
+
+config INPUT_CST9217
+	bool "Hynitron CST9217 capacitive touch controller"
+	default y
+	depends on DT_HAS_HYNITRON_CST9217_ENABLED
+	select I2C
+	select GPIO
+	select INPUT_TOUCH
+	help
+	  Hynitron CST9217 (and CST9220) touch controller over I2C, as used on
+	  the Waveshare ESP32-S3-Touch-AMOLED-1.75.
+
+config INPUT_CST9217_POLL_MS
+	int "CST9217 poll period while touched (ms)"
+	default 20
+	depends on INPUT_CST9217
+	help
+	  The chip pulses its interrupt line on first contact and then only about
+	  once a second while a finger stays down, so the driver polls at this
+	  rate until the finger lifts.

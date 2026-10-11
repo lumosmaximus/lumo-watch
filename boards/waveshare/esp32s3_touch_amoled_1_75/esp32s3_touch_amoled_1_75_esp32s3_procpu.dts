@@ -28,6 +28,7 @@
 		zephyr,console = &usb_serial;
 		zephyr,shell-uart = &usb_serial;
 		zephyr,bt-hci = &esp32_bt_hci;
+		zephyr,touch = &cst9217;
 	};
 
 	aliases {
@@ -108,6 +109,38 @@
 		reg = <0x51>;
 	};
 
+	/* ES8311 speaker DAC. CE is pulled low (0x18); the NS4150B amp is
+	 * enabled straight from GPIO46 (gpio1 pin 14).
+	 */
+	es8311: codec@18 {
+		compatible = "everest,es8311";
+		reg = <0x18>;
+		pa-gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
+	};
+
+	/* ES7210 mic ADC: MIC1/MIC2 = the two onboard mics, MIC3 = the ES8311
+	 * output (echo reference), MIC4 not connected.
+	 */
+	es7210: codec@40 {
+		compatible = "everest,es7210";
+		reg = <0x40>;
+		mic-gain-db = <30>;
+	};
+
+	/* CST9217 touch, 466x466. Its axes run opposite to the panel's
+	 * (Waveshare's BSP mirrors both), so invert both here.
+	 */
+	cst9217: touch@5a {
+		compatible = "hynitron,cst9217";
+		reg = <0x5a>;
+		int-gpios = <&gpio0 11 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>;
+		screen-width = <466>;
+		screen-height = <466>;
+		inverted-x;
+		inverted-y;
+	};
+
 	qmi8658: imu@6b {
 		compatible = "qst,qmi8658a";
 		reg = <0x6b>;
@@ -115,6 +148,39 @@
 		gyro-fs = <512>;
 		accel-odr = <896>;
 		gyro-odr = <896>;
+	};
+};
+
+/* GDMA: shared by both cores. Core 0 uses channels 2/3 (I2S); core 1 will
+ * use 0/1 (display SPI). Each image only touches its own channels.
+ */
+&dma {
+	status = "okay";
+};
+
+/* One I2S bus for both codecs (DMA channels 2/3). */
+i2s_audio: &i2s0 {
+	status = "okay";
+	pinctrl-0 = <&i2s0_default>;
+	pinctrl-names = "default";
+};
+
+/* TF card, native SDMMC 1-bit (CMD 1, CLK 2, D0 3), slot 1 like ESP-IDF. */
+&sdhc {
+	status = "okay";
+};
+
+&sdhc1 {
+	status = "okay";
+	pinctrl-0 = <&sdhc1_default>;
+	pinctrl-names = "default";
+	bus-width = <1>;
+	max-bus-freq = <20000000>;
+
+	sd: sd {
+		compatible = "zephyr,sdmmc-disk";
+		disk-name = "SD";
+		status = "okay";
 	};
 };
 

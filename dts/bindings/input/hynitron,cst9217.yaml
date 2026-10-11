@@ -1,0 +1,20 @@
+# Copyright (c) 2026 Adi Nandanamudi
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Hynitron CST9217 capacitive touch controller (I2C, 0x5A). Reports
+  INPUT_ABS_X / INPUT_ABS_Y and INPUT_BTN_TOUCH through the input subsystem.
+
+compatible: "hynitron,cst9217"
+
+include: [i2c-device.yaml, touchscreen-common.yaml]
+
+properties:
+  int-gpios:
+    type: phandle-array
+    required: true
+    description: Interrupt line (pulses on touch).
+  reset-gpios:
+    type: phandle-array
+    required: true
+    description: Reset line, active low.

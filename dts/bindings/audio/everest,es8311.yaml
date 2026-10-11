@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Everest ES8311 mono audio codec. This driver uses the DAC path only, as an
+  I2S target clocked from MCLK.
+
+compatible: "everest,es8311"
+
+include: i2c-device.yaml
+
+properties:
+  pa-gpios:
+    type: phandle-array
+    description: |
+      Speaker amplifier enable. Switched on by start_output (after the I2S
+      stream is running, to avoid a pop) and off by stop_output.

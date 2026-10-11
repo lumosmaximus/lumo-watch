@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Everest ES7210 4-channel microphone ADC, as an I2S target clocked from MCLK.
+  MIC1 and MIC2 come out as standard I2S left/right.
+
+compatible: "everest,es7210"
+
+include: i2c-device.yaml
+
+properties:
+  mic-gain-db:
+    type: int
+    default: 30
+    description: Initial PGA gain for MIC1/MIC2 in dB (0..33, 3 dB steps).
