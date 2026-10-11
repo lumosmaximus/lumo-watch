@@ -1,0 +1,66 @@
+/*
+ * Copyright (c) 2026 Adi Nandanamudi
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Pins from the schematic (ESP32-S3-Touch-AMOLED-1.75, 2025-07-27) and
+ * Waveshare's HARDWARE_REFERENCE.md.
+ */
+
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+
+&pinctrl {
+	/* One I2C bus for everything: touch 0x5A, ES8311 0x18, TCA9554 0x20,
+	 * AXP2101 0x34, ES7210 0x40, PCF85063 0x51, QMI8658 0x6B. 2.2k pull-ups
+	 * on the board.
+	 */
+	i2c0_default: i2c0_default {
+		group1 {
+			pinmux = <I2C0_SDA_GPIO15>, <I2C0_SCL_GPIO14>;
+			bias-pull-up;
+			drive-open-drain;
+			output-high;
+		};
+	};
+
+	/* One I2S bus for both codecs: MCLK 42, BCLK 9, WS 45, out 8 (to
+	 * ES8311 DSDIN), in 10 (from ES7210 SDOUT1).
+	 */
+	i2s0_default: i2s0_default {
+		group1 {
+			pinmux = <I2S0_MCLK_GPIO42>,
+				 <I2S0_O_BCK_GPIO9>,
+				 <I2S0_O_WS_GPIO45>,
+				 <I2S0_O_SD_GPIO8>;
+			output-low;
+		};
+		group2 {
+			pinmux = <I2S0_I_SD_GPIO10>;
+		};
+	};
+
+	/* TF card, native SDMMC 1-bit: CMD 1, CLK 2, D0 3 (D3/CS on 41). */
+	sdhc0_default: sdhc0_default {
+		group1 {
+			pinmux = <SDHC0_CLKOUT_GPIO2>,
+				 <SDHC0_CMD_GPIO1>,
+				 <SDHC0_DATA0_GPIO3>,
+				 <SDHC0_DATA3_GPIO41>;
+			bias-pull-up;
+		};
+	};
+
+	/* CO5300 QSPI on SPI2 (used by core 1): clock 38, CS 12, D0-D3 on 4-7.
+	 * The stock macros don't cover the quad data lines, so they are routed by
+	 * hand in the standard order D0 = D, D1 = Q, D2 = WP, D3 = HD.
+	 */
+	spim2_lcd_qspi: spim2_lcd_qspi {
+		group1 {
+			pinmux = <SPIM2_SCLK_GPIO38>,
+				 <SPIM2_CSEL_GPIO12>,
+				 <ESP32_PINMUX(4, ESP_FSPID_IN, ESP_FSPID_OUT)>,
+				 <ESP32_PINMUX(5, ESP_FSPIQ_IN, ESP_FSPIQ_OUT)>,
+				 <ESP32_PINMUX(6, ESP_FSPIWP_IN, ESP_FSPIWP_OUT)>,
+				 <ESP32_PINMUX(7, ESP_FSPIHD_IN, ESP_FSPIHD_OUT)>;
+		};
+	};
+};

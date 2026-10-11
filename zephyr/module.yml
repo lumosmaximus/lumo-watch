@@ -1,0 +1,7 @@
+name: amoled_175
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+    board_root: .
+    dts_root: .

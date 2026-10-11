@@ -1,0 +1,33 @@
+# Copyright (c) 2026 Adi Nandanamudi
+# SPDX-License-Identifier: Apache-2.0
+
+# Core 0 (PROCPU): Wi-Fi/BLE, audio, storage, power, sensors, touch.
+if BOARD_ESP32S3_TOUCH_AMOLED_1_75_ESP32S3_PROCPU
+
+# ESP32-S3R8: the in-package 8 MB PSRAM is octal (size comes from &psram0).
+choice SPIRAM_MODE
+	default SPIRAM_MODE_OCT
+	depends on ESP_SPIRAM
+endchoice
+
+choice SPIRAM_SPEED
+	default SPIRAM_SPEED_80M
+	depends on ESP_SPIRAM
+endchoice
+
+# I2C-attached drivers log from the system workqueue; 1 KB is too tight.
+config SYSTEM_WORKQUEUE_STACK_SIZE
+	default 2048
+
+endif
+
+# Core 1 (APPCPU): the display. Its own image, with its own RAM carved out of
+# the internal SRAM (see CONFIG_ESP_APPCPU_DRAM_SIZE in the app).
+if BOARD_ESP32S3_TOUCH_AMOLED_1_75_ESP32S3_APPCPU
+
+# Interrupt-driven SPI so the CPU is free while a strip goes out by DMA.
+config SPI_ESP32_INTERRUPT
+	default y
+	depends on SPI
+
+endif

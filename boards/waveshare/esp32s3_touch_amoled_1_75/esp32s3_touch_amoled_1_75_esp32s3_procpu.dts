@@ -1,0 +1,135 @@
+/*
+ * Copyright (c) 2026 Adi Nandanamudi
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Core 0 (PROCPU): owns Wi-Fi/BLE, the I2C bus (power, sensors, touch, codec
+ * control), audio and the TF card. The display belongs to core 1 (see the
+ * _appcpu.dts); SPI2 is deliberately left disabled here.
+ */
+
+/dts-v1/;
+
+#include <espressif/esp32s3/esp32s3.dtsi>
+#include <espressif/partitions_0x0_amp_16M.dtsi>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include "esp32s3_touch_amoled_1_75-pinctrl.dtsi"
+
+/ {
+	model = "Waveshare ESP32-S3-Touch-AMOLED-1.75 PROCPU";
+	compatible = "waveshare,esp32-s3-touch-amoled-1.75";
+
+	chosen {
+		zephyr,sram = &sram1;
+		zephyr,ipc_shm = &shm0;
+		zephyr,ipc = &ipm0;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,console = &usb_serial;
+		zephyr,shell-uart = &usb_serial;
+		zephyr,bt-hci = &esp32_bt_hci;
+	};
+
+	aliases {
+		i2c-0 = &i2c0;
+		rtc = &rtc;
+		imu0 = &qmi8658;
+		sw0 = &boot_button;
+		watchdog0 = &wdt0;
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+
+		/* GPIO0, 10k pull-up on the board, low while pressed (strap pin). */
+		boot_button: boot_button {
+			gpios = <&gpio0 0 GPIO_ACTIVE_LOW>;
+			label = "BOOT";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+};
+
+&flash0 {
+	reg = <0x0 DT_SIZE_M(16)>;
+	ranges = <0x0 0x0 DT_SIZE_M(16)>;
+};
+
+&psram0 {
+	size = <DT_SIZE_M(8)>;
+};
+
+&usb_serial {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&ipm0 {
+	status = "okay";
+};
+
+&i2c0 {
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_FAST>;
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-names = "default";
+
+	/* TCA9554PWR, register-compatible with PCA9554, A2:A0 = 000. Its INT pin
+	 * is not wired to the ESP32, so inputs must be polled.
+	 *   P3 RTC_INT, P4 SYS_OUT (PWR key, high = pressed), P5 AXP_IRQ,
+	 *   P6 QMI_INT1, P7 GPS_RST (unused on the -B), P0-P2 test points.
+	 */
+	exio: gpio@20 {
+		compatible = "nxp,pca9554";
+		reg = <0x20>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <8>;
+	};
+
+	/* Power: DCDC1 = VCC3V3 (ESP32, flash, display, touch, sensors, SD),
+	 * ALDO1 = A3V3 (audio). The rails are left at their power-on defaults
+	 * for now; they get regulator children once read back from the chip.
+	 */
+	axp2101: pmic@34 {
+		compatible = "x-powers,axp2101";
+		reg = <0x34>;
+	};
+
+	rtc: rtc@51 {
+		compatible = "nxp,pcf85063a";
+		reg = <0x51>;
+	};
+
+	qmi8658: imu@6b {
+		compatible = "qst,qmi8658a";
+		reg = <0x6b>;
+		accel-fs = <4>;
+		gyro-fs = <512>;
+		accel-odr = <896>;
+		gyro-odr = <896>;
+	};
+};
+
+&wdt0 {
+	status = "okay";
+};
+
+&trng0 {
+	status = "okay";
+};
+
+&wifi {
+	status = "okay";
+};
+
+&esp32_bt_hci {
+	status = "okay";
+};

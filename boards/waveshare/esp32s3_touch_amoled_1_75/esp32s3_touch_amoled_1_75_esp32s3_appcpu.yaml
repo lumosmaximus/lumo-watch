@@ -1,0 +1,7 @@
+identifier: esp32s3_touch_amoled_1_75/esp32s3/appcpu
+name: ESP32-S3-Touch-AMOLED-1.75 APPCPU
+type: mcu
+arch: xtensa
+toolchain:
+  - zephyr
+vendor: waveshare
