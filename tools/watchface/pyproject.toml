@@ -1,0 +1,6 @@
+[project]
+name = "watchface"
+version = "0.1.0"
+description = "Renders the dive-watch dial and hands into LVGL images"
+requires-python = ">=3.10"
+dependencies = ["pillow"]

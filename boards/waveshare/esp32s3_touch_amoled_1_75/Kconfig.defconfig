@@ -1,6 +1,12 @@
 # Copyright (c) 2026 Adi Nandanamudi
 # SPDX-License-Identifier: Apache-2.0
 
+# W25Q128JV supports quad I/O: twice the flash bandwidth of the DIO default.
+# Matters a lot here: core 1 reads the watch dial (and its code) from flash.
+choice ESPTOOLPY_FLASHMODE
+	default ESPTOOLPY_FLASHMODE_QIO
+endchoice
+
 # Core 0 (PROCPU): Wi-Fi/BLE, audio, storage, power, sensors, touch.
 if BOARD_ESP32S3_TOUCH_AMOLED_1_75_ESP32S3_PROCPU
 
