@@ -8,7 +8,7 @@ list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(watch_remote)
 
-target_sources(app PRIVATE src/main.c)
+target_sources(app PRIVATE src/main.c src/qspi_fast.c)
 target_sources(app PRIVATE src/watch_img.c)
 
 
