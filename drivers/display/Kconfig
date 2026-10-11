@@ -1,0 +1,13 @@
+# Copyright (c) 2026 Adi Nandanamudi
+# SPDX-License-Identifier: Apache-2.0
+
+config CO5300_QSPI
+	bool "Chipone CO5300 AMOLED over QSPI"
+	default y
+	depends on DT_HAS_CHIPONE_CO5300_QSPI_ENABLED
+	select SPI
+	select SPI_EXTENDED_MODES
+	select GPIO
+	help
+	  SPI_EXTENDED_MODES is needed for SPI_LINES_QUAD: without it the SPI
+	  operation word is 16 bits and the quad flag is silently dropped.

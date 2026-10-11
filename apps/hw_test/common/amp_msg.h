@@ -24,6 +24,8 @@ struct amp_pong {
 	uint32_t seq;
 	uint32_t core1_ms;
 	uint32_t core_id;  /* from the PRID register: 0 = PROCPU, 1 = APPCPU */
+	int32_t disp_err;  /* 0 = test pattern drawn, else the error */
+	uint32_t draw_ms;  /* time to render + send the full pattern */
 };
 
 #endif

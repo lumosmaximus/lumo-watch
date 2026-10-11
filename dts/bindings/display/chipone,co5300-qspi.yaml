@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Adi Nandanamudi
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Chipone CO5300 AMOLED controller on a 4-line (QSPI) bus. Commands go out
+  as opcode 0x02 + {0x00, cmd, 0x00} on one line; pixels as opcode 0x32 +
+  {0x00, 0x2C/0x3C, 0x00} followed by RGB565 on four lines.
+
+  Upstream "chipone,co5300" (on spi) writes pixels on one line; this driver
+  uses all four.
+
+compatible: "chipone,co5300-qspi"
+
+include: [spi-device.yaml, display-controller.yaml]
+
+properties:
+  reset-gpios:
+    type: phandle-array
+    required: true
+  column-offset:
+    type: int
+    default: 0
+    description: First visible column in controller RAM (6 on the 1.75" round panel).
+  row-offset:
+    type: int
+    default: 0

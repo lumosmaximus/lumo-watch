@@ -3,3 +3,4 @@
 
 add_subdirectory_ifdef(CONFIG_AUDIO_CODEC audio)
 add_subdirectory_ifdef(CONFIG_INPUT input)
+add_subdirectory_ifdef(CONFIG_DISPLAY display)

@@ -298,7 +298,13 @@ int main(void)
 	ipm_register_callback(ipm, on_ipm, NULL);
 	ipm_set_enabled(ipm, 1);
 	k_msleep(50);
-	printk("  core 1:    %s\n", PASS(core1_alive()));
+	bool c1 = core1_alive();
+
+	printk("  core 1:    %s\n", PASS(c1));
+	if (c1) {
+		printk("  display:   %s  (core 1: CO5300 test pattern, err %d, %u ms)\n",
+		       PASS(pong.disp_err == 0), pong.disp_err, pong.draw_ms);
+	}
 	gpio_pin_configure(exio, 4, GPIO_INPUT); /* SYS_OUT: PWR key, high while pressed */
 	k_msleep(1500);
 	printk("  mics:      %s  levels below (talk or tap near the mics)\n\n", PASS(mic_ok));

@@ -11,6 +11,7 @@
 
 #include <espressif/esp32s3/esp32s3.dtsi>
 #include <espressif/partitions_0x0_amp_16M.dtsi>
+#include <zephyr/dt-bindings/gpio/gpio.h>
 #include "esp32s3_touch_amoled_1_75-pinctrl.dtsi"
 
 / {
@@ -23,6 +24,7 @@
 		zephyr,ipc = &ipm0;
 		zephyr,flash = &flash0;
 		zephyr,code-partition = &slot0_appcpu_partition;
+		zephyr,display = &amoled;
 	};
 };
 
@@ -37,4 +39,46 @@
 
 &ipm0 {
 	status = "okay";
+};
+
+/* Only the reset pin (GPIO39) is used from here. Core 0 also drives pins on
+ * this port; set/clear go through atomic W1TS/W1TC registers, so that is safe.
+ */
+&gpio1 {
+	status = "okay";
+};
+
+/* GDMA is shared with core 0. Core 0's I2S uses channel pair 1 and gets its
+ * interrupts; core 1 must not also claim them (its handler would clear the
+ * status before core 0 saw it). So core 1 only lists pair 0 (the display):
+ * entries are RX/TX per pair, in channel order.
+ */
+&dma {
+	status = "okay";
+	interrupts = <DMA_IN_CH0_INTR_SOURCE IRQ_DEFAULT_PRIORITY ESP_INTR_FLAG_SHARED>,
+		     <DMA_OUT_CH0_INTR_SOURCE IRQ_DEFAULT_PRIORITY ESP_INTR_FLAG_SHARED>;
+};
+
+/* CO5300 466x466 round AMOLED on SPI2 in quad mode, GDMA pair 0. */
+&spi2 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+	pinctrl-0 = <&spim2_lcd_qspi>;
+	pinctrl-names = "default";
+	half-duplex;
+	dma-enabled;
+	dmas = <&dma 0>, <&dma 1>;
+	dma-names = "rx", "tx";
+
+	amoled: display@0 {
+		compatible = "chipone,co5300-qspi";
+		reg = <0>;
+		spi-max-frequency = <40000000>;
+		width = <466>;
+		height = <466>;
+		/* the panel's visible columns start at 6 in controller RAM */
+		column-offset = <6>;
+		reset-gpios = <&gpio1 7 GPIO_ACTIVE_LOW>;
+	};
 };
