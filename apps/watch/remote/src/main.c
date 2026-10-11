@@ -99,6 +99,7 @@ static int face = FACE_GMT;
 struct sweep {
 	float tip, tail, halfw, dot, cw, cwr, cwk, cap, capk;
 	float loz;     /* centre of an open lozenge along the hand (0: none) */
+	float redtip;  /* length of a red tip (0: none) */
 	uint8_t r, g, b; /* hand colour */
 	int mr; /* dirty-band radius: widest part + shadow + blur */
 };
@@ -112,8 +113,8 @@ static const struct sweep sweep_chrono = {
 };
 static const struct sweep sweep_chrono_white = {
 	.tip = 192, .tail = -42, .halfw = 1.0f, .dot = 0, .cw = -30, .cwr = 4.5f,
-	.cwk = 1.0f / 10, .cap = 5.5f, .capk = 1.0f / 12, .loz = 150, .r = 26, .g = 54,
-	.b = 128, .mr = 12,
+	.cwk = 1.0f / 10, .cap = 5.5f, .capk = 1.0f / 12, .loz = 150, .redtip = 26,
+	.r = 22, .g = 22, .b = 24, .mr = 12,
 };
 static struct sweep sw = sweep_gmt;
 static float sec_sn, sec_cs;
@@ -687,7 +688,11 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 				over(&c, 236, 240, 222, (int)(al * 255));
 			}
 			if (aw > 0) {
-				over(&c, sw.r, sw.g, sw.b, (int)(aw * 255));
+				if (sw.redtip && ss > sw.tip - sw.redtip) {
+					over(&c, 200, 30, 36, (int)(aw * 255));
+				} else {
+					over(&c, sw.r, sw.g, sw.b, (int)(aw * 255));
+				}
 			}
 			o[x - x0] = to565(&c);
 		}
@@ -934,11 +939,11 @@ static void face_setup(int f)
 			sweep_rg = chrono_regions;
 			ch_body = (struct rgb){226, 228, 232};
 			ch_lume = (struct rgb){236, 240, 222};
-		} else { /* white dial, blue hands with white lume */
+		} else { /* white dial: black hands with cream lume, red-tipped chrono */
 			sw = sweep_chrono_white;
 			sweep_rg = chrono_white_regions;
-			ch_body = (struct rgb){26, 54, 128};
-			ch_lume = (struct rgb){250, 250, 250};
+			ch_body = (struct rgb){22, 22, 24};
+			ch_lume = (struct rgb){238, 240, 226};
 		}
 	}
 }

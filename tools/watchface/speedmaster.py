@@ -37,11 +37,14 @@ BEZEL_BLACK = (14, 14, 16)
 THEMES = {
     "black": dict(dial=BLACK, bezel=BEZEL_BLACK, bezel_ink=WHITE, ink=INK, index=WHITE,
                   double=True, lume=LUME, sub=(20, 20, 22), groove=(26, 26, 29),
-                  sub_edge=(70, 70, 74), sub_ink=INK, text=WHITE),
-    "white": dict(dial=(244, 244, 242), bezel=(30, 52, 120), bezel_ink=(240, 242, 246),
-                  ink=(46, 56, 86), index=(26, 54, 128), double=False, lume=None,
-                  sub=(232, 232, 233), groove=(222, 222, 224), sub_edge=(196, 198, 204),
-                  sub_ink=(26, 54, 128), text=(26, 54, 128)),
+                  sub_edge=(70, 70, 74), sub_ink=INK, text=WHITE, bezel_font="Arial.ttf",
+                  model=WHITE),
+    # white lacquer dial, black bezel and print, red model line
+    "white": dict(dial=(246, 246, 244), bezel=(18, 18, 20), bezel_ink=(236, 236, 236),
+                  bezel_font="Arial.ttf", ink=(30, 30, 34), index=(22, 22, 24),
+                  double=False, lume=(206, 212, 196), sub=(238, 238, 239),
+                  groove=(228, 228, 230), sub_edge=(204, 204, 208), sub_ink=(24, 24, 26),
+                  text=(24, 24, 26), model=(200, 32, 38)),
 }
 
 
@@ -92,25 +95,19 @@ def draw_bezel(img, d, t):
               fill=t["bezel"])
     d.ellipse(S([(C - BEZEL_IN, C - BEZEL_IN), (C + BEZEL_IN, C + BEZEL_IN)]), fill=(0, 0, 0))
     # tachymeter: speed = 3600 / seconds; the scale starts at 7.2 s (500)
-    f = font("Arial Bold.ttf", 13)
-    labelled = [500, 400, 300, 250, 200, 180, 160, 150, 140, 130, 120, 110, 100, 90, 85,
-                80, 75, 70, 65, 60]
+    f = font(t["bezel_font"], 13)
+    labelled = [500, 400, 350, 300, 275, 250, 225, 200, 190, 180, 170, 160, 150, 140, 130,
+                120, 110, 100, 90, 85, 80, 75, 70, 65, 60]
+    # numbers printed upright (only TACHYMETRE follows the curve), centred on
+    # the bezel band
     for v in labelled:
-        deg = 3600 / v * 6
-        tick(d, C, C, BEZEL_IN + 1, BEZEL_IN + 7, deg, 1.6, WHITE)
-        ring_label(img, str(v), 219, deg, f, WHITE)
-    # fine ticks between the labels
-    for v in range(500, 60, -1):
-        if v in labelled:
-            continue
-        if (v > 200 and v % 50) or (100 < v <= 200 and v % 10) or (v <= 100 and v % 5):
-            continue
-        tick(d, C, C, BEZEL_IN + 1, BEZEL_IN + 4, 3600 / v * 6, 1.0, WHITE)
-    # dots beside each label, like the real scale
-    for v in labelled:
-        x, y = polar_at(C, C, BEZEL_IN + 10, 3600 / v * 6)
-        d.ellipse(S([(x - 1.1, y - 1.1), (x + 1.1, y + 1.1)]), fill=WHITE)
-    arc_text(img, "TACHYMETRE", 216, 21, font("Arial Bold.ttf", 12), WHITE)
+        x, y = polar_at(C, C, 215, 3600 / v * 6)
+        text_at(d, str(v), x, y, f, WHITE)
+    # one short dash between each pair of labels, at the labels' radius
+    for a, b in zip(labelled, labelled[1:]):
+        deg = (3600 / a * 6 + 3600 / b * 6) / 2
+        tick(d, C, C, 213, 219, deg, 1.4, WHITE)
+    arc_text(img, "TACHYMETRE", 215, 21, font(t["bezel_font"], 12), WHITE)
 
 
 def subdial(img, d, cx, cy, kind, t):
@@ -181,14 +178,15 @@ def dial(theme="black"):
                    width=int((2.6 if t["double"] else 4.2) * SS))
         if LUME:
             x, y = polar_at(C, C, 180, deg)
-            d.ellipse(S([(x - 2.4, y - 2.4), (x + 2.4, y + 2.4)]), fill=LUME)
+            d.ellipse(S([(x - 2.4, y - 2.4), (x + 2.4, y + 2.4)]), fill=LUME,
+                      outline=t["index"] if not t["double"] else None, width=SS // 2)
 
     subdial(img, d, C - SUB_OFF, C, "sec", t)
     subdial(img, d, C + SUB_OFF, C, "min", t)
     subdial(img, d, C, C + SUB_OFF, "hour", t)
 
     text_at(d, "ZEPHYR", C, C - 92, font("Arial Bold.ttf", 17), t["text"])
-    text_at(d, "CHRONOGRAPH", C, C - 58, font("Arial.ttf", 12), t["text"])
+    text_at(d, "CHRONOGRAPH", C, C - 58, font("Arial Italic.ttf", 13), t["model"])
     text_at(d, "DUAL CORE · AMP", C, C - 42, font("Arial.ttf", 10), t["text"])
     return img.resize((SIZE, SIZE), Image.LANCZOS).convert("RGB")
 
