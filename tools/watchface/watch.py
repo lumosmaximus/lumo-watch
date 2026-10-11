@@ -311,8 +311,7 @@ def export(out):
            "#ifndef WATCH_IMG_H_", "#define WATCH_IMG_H_", "", "#include <stdint.h>", "",
            f"#define WATCH_SIZE {SIZE}", f"#define WATCH_BEZEL_IN {BEZEL_IN}",
            f"#define WATCH_BEZEL_OUT {BEZEL_OUT}", "",
-           "extern const uint8_t watch_dial[];   /* RGB565 */",
-           "extern const uint8_t watch_bezel[];  /* RGB565 + A8 */"]
+           "extern const uint8_t watch_dial[];   /* RGB565 */"]
 
     px = dial(with_bezel=False).tobytes()
     data = bytearray()
@@ -321,28 +320,102 @@ def export(out):
         data += bytes((v & 0xFF, v >> 8))
     src.append(c_array("watch_dial", data))
 
-    rgb, alpha = bytearray(), bytearray()
-    for r, g, bl, a in bezel().get_flattened_data():
-        v = rgb565(r, g, bl)
-        rgb += bytes((v & 0xFF, v >> 8))
-        alpha.append(a)
-    src.append(c_array("watch_bezel", rgb + alpha))
+    # Bezel as a polar lookup: an unwrapped strip (radius-major: RAD rows of
+    # ANG angles) plus, for every ring pixel, its angle and radius index.
+    # Turning the bezel by k steps is then just "angle - k" per pixel.
+    ANG, R0 = 1440, BEZEL_IN - 2          # 0.25 degree steps; first radius
+    RAD = BEZEL_OUT - R0 + 1
+    big = Image.new("RGBA", (SIZE * SS, SIZE * SS), (0, 0, 0, 0))
+    draw_bezel(big, ImageDraw.Draw(big))
+    bp = big.load()
+    W = big.width
 
-    for name, (img, (pvx, pvy)) in parts().items():
-        if name == "watch_second":
-            continue  # drawn analytically on the device
-        raw = img.tobytes()
-        argb = bytearray()
-        for i in range(0, len(raw), 4):
-            r, g, b, a = raw[i:i + 4]
-            if a == 0:
-                r = g = b = 0
-            argb += bytes((b, g, r, a))
-        src.append(c_array(name, argb))
-        N = name.upper()
-        hdr += [f"extern const uint8_t {name}[];  /* ARGB8888 */",
-                f"#define {N}_W {img.width}", f"#define {N}_H {img.height}",
-                f"#define {N}_PIVOT_X {pvx}", f"#define {N}_PIVOT_Y {pvy}"]
+    def bil(x, y):
+        x0, y0 = int(x), int(y)
+        fx, fy = x - x0, y - y0
+        acc = [0.0, 0.0, 0.0, 0.0]
+        for dx, dy, w in ((0, 0, (1 - fx) * (1 - fy)), (1, 0, fx * (1 - fy)),
+                          (0, 1, (1 - fx) * fy), (1, 1, fx * fy)):
+            xx, yy = min(W - 1, x0 + dx), min(W - 1, y0 + dy)
+            px = bp[xx, yy]
+            a = px[3] / 255
+            for c in range(3):
+                acc[c] += px[c] * a * w
+            acc[3] += a * w
+        if acc[3] <= 0:
+            return 0, 0, 0, 0
+        return (acc[0] / acc[3], acc[1] / acc[3], acc[2] / acc[3], acc[3])
+
+    strip_rgb, strip_a = bytearray(), bytearray()
+    for ri in range(RAD):
+        r = R0 + ri + 0.5
+        for ai in range(ANG):
+            th = math.radians(ai * 360 / ANG - 90)
+            # average a few samples across the pixel's radial width (soft edges)
+            acc = [0.0] * 4
+            for dr in (-0.33, 0.0, 0.33):
+                x = (C + (r + dr) * math.cos(th)) * SS
+                y = (C + (r + dr) * math.sin(th)) * SS
+                cr, cg, cb, ca = bil(x, y)
+                acc[0] += cr * ca
+                acc[1] += cg * ca
+                acc[2] += cb * ca
+                acc[3] += ca
+            a = acc[3] / 3
+            if acc[3] > 0:
+                cr, cg, cb = acc[0] / acc[3], acc[1] / acc[3], acc[2] / acc[3]
+            else:
+                cr = cg = cb = 0
+            v = rgb565(int(cr), int(cg), int(cb))
+            strip_rgb += bytes((v & 0xFF, v >> 8))
+            strip_a.append(int(round(a * 255)))
+    src.append(c_array("watch_ring_rgb", strip_rgb))
+    src.append(c_array("watch_ring_a", strip_a))
+
+    # ring pixels, row by row: up to two spans per row (left/right of the dial)
+    lut_ang, lut_rad = bytearray(), bytearray()
+    row_off, spans = [], []
+    rmin2, rmax2 = R0 ** 2, (BEZEL_OUT + 0.5) ** 2
+    for y in range(SIZE):
+        row_off.append(len(lut_rad))
+        xs = [x for x in range(SIZE)
+              if rmin2 <= (x + 0.5 - C) ** 2 + (y + 0.5 - C) ** 2 < rmax2]
+        sp = []
+        for x in xs:
+            if sp and sp[-1][1] == x - 1:
+                sp[-1][1] = x
+            else:
+                sp.append([x, x])
+        sp = sp[:2] + [[0, -1]] * (2 - len(sp[:2]))
+        spans.append(sp)
+        for (a0, a1) in sp:
+            for x in range(a0, a1 + 1):
+                dx, dy = x + 0.5 - C, y + 0.5 - C
+                ai = int(round((math.degrees(math.atan2(dx, -dy)) % 360) * ANG / 360)) % ANG
+                ri = min(RAD - 1, max(0, int(math.hypot(dx, dy) - R0)))
+                lut_ang += bytes((ai & 0xFF, ai >> 8))
+                lut_rad.append(ri)
+    src.append(c_array("watch_ring_ang", lut_ang))
+    src.append(c_array("watch_ring_rad", lut_rad))
+    offs = bytearray()
+    for o in row_off:
+        offs += o.to_bytes(4, "little")
+    src.append(c_array("watch_ring_row_off", offs))
+    sp_b = bytearray()
+    for sp in spans:
+        for (a0, a1) in sp:
+            sp_b += a0.to_bytes(2, "little", signed=True) + a1.to_bytes(2, "little", signed=True)
+    src.append(c_array("watch_ring_spans", sp_b))
+    hdr += ["", "/* bezel ring lookup (see export()) */",
+            f"#define WATCH_RING_ANG {ANG}", f"#define WATCH_RING_RAD {RAD}",
+            f"#define WATCH_RING_R0 {R0}",
+            "extern const uint8_t watch_ring_rgb[];     /* RGB565 [RAD][ANG] */",
+            "extern const uint8_t watch_ring_a[];       /* A8 [RAD][ANG] */",
+            "extern const uint8_t watch_ring_ang[];     /* u16 per ring pixel */",
+            "extern const uint8_t watch_ring_rad[];     /* u8 per ring pixel */",
+            "extern const uint8_t watch_ring_row_off[]; /* u32 per row: first pixel */",
+            "extern const uint8_t watch_ring_spans[];   /* 2 x (i16 x0, i16 x1) per row */"]
+    print(f"ring: strip {len(strip_rgb) + len(strip_a)} B, lut {len(lut_ang) + len(lut_rad)} B")
 
     dates = bytearray()
     for img in date_images():

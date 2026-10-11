@@ -69,22 +69,16 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 
 /* ---- scene ---------------------------------------------------------------------- */
 
-/* An image hand: ARGB8888 drawn pointing up, rotated about its pivot. */
+/* A hand's current angle (the shapes are vector, see vhand_px). */
 struct img_hand {
-	const uint8_t *px;
-	int w, h;
-	float pvx, pvy;
 	int32_t ang;      /* 0.1 degree, clockwise from 12 */
 	int32_t shown;    /* angle currently on screen (-1: never drawn) */
 	float sn, cs;
 };
 
-#define HAND(name, NAME) {.px = name, .w = NAME##_W, .h = NAME##_H, \
-			  .pvx = NAME##_PIVOT_X, .pvy = NAME##_PIVOT_Y, .shown = -1}
-
-static struct img_hand gmt = HAND(watch_gmt, WATCH_GMT);
-static struct img_hand hour = HAND(watch_hour, WATCH_HOUR);
-static struct img_hand minute = HAND(watch_minute, WATCH_MINUTE);
+static struct img_hand gmt = {.shown = -1};
+static struct img_hand hour = {.shown = -1};
+static struct img_hand minute = {.shown = -1};
 static struct img_hand *const img_hands[] = {&gmt, &hour, &minute}; /* back to front */
 
 /* second hand: distances along the hand from the centre (pixels) */
@@ -99,7 +93,7 @@ static int32_t sec_shown; /* the first frame draws it at 12 */
 
 #define BEZEL_STEP 60     /* 6 degrees = one minute on the dial */
 static int32_t bezel_rot, bezel_shown = -1;
-static float bez_sn, bez_cs;
+static int ring_off; /* bezel_rot in lookup angle steps */
 
 static int date_day, date_shown;
 
@@ -158,86 +152,6 @@ static ALWAYS_INLINE float fmn(float a, float b)
 static ALWAYS_INLINE float disc(float d2, float r, float k)
 {
 	return clamp01((r * r + r + 0.25f - d2) * k);
-}
-
-/* Bilinear sample of an ARGB8888 hand at texel coords (u, v), blended onto d. */
-static ALWAYS_INLINE void hand_px(const struct img_hand *hd, float u, float v, struct rgb *d)
-{
-	u -= 0.5f;
-	v -= 0.5f;
-	if (u < -1 || v < -1 || u >= hd->w || v >= hd->h) {
-		return;
-	}
-	int x0 = ifloor(u), y0 = ifloor(v);
-	int fx = (int)((u - x0) * 256), fy = (int)((v - y0) * 256);
-	int wts[4] = {(256 - fx) * (256 - fy), fx * (256 - fy), (256 - fx) * fy, fx * fy};
-	/* a: weight x alpha, 0..65280 in total; colours accumulate as c x a */
-	int pr = 0, pg = 0, pb = 0, pa = 0;
-
-	for (int k = 0; k < 4; k++) {
-		int x = x0 + (k & 1), y = y0 + (k >> 1);
-
-		if (x < 0 || y < 0 || x >= hd->w || y >= hd->h || !wts[k]) {
-			continue;
-		}
-		const uint8_t *p = hd->px + (y * hd->w + x) * 4; /* B G R A */
-		int a = (p[3] * wts[k]) >> 8;
-
-		pa += a;
-		pb += p[0] * a;
-		pg += p[1] * a;
-		pr += p[2] * a;
-	}
-	if (pa == 0) {
-		return;
-	}
-	/* premultiplied over: d = c + d * (1 - alpha), all over 65536 */
-	int ia = 65536 - pa;
-
-	d->r = (pr + d->r * ia) >> 16;
-	d->g = (pg + d->g * ia) >> 16;
-	d->b = (pb + d->b * ia) >> 16;
-}
-
-/* Bilinear sample of the bezel ring (RGB565 + A8 planes) at image coords. */
-static ALWAYS_INLINE void bezel_px(float u, float v, struct rgb *d)
-{
-	const uint16_t *rgbp = (const uint16_t *)watch_bezel;
-	const uint8_t *ap = watch_bezel + N * N * 2;
-
-	u -= 0.5f;
-	v -= 0.5f;
-	int x0 = ifloor(u), y0 = ifloor(v);
-
-	if (x0 < 0 || y0 < 0 || x0 >= N - 1 || y0 >= N - 1) {
-		return;
-	}
-	int fx = (int)((u - x0) * 256), fy = (int)((v - y0) * 256);
-	int wts[4] = {(256 - fx) * (256 - fy), fx * (256 - fy), (256 - fx) * fy, fx * fy};
-	int pr = 0, pg = 0, pb = 0, pa = 0;
-
-	for (int k = 0; k < 4; k++) {
-		int i = (y0 + (k >> 1)) * N + x0 + (k & 1);
-		int a = (ap[i] * wts[k]) >> 8;
-
-		if (!a) {
-			continue;
-		}
-		struct rgb c = from565(rgbp[i]);
-
-		pa += a;
-		pr += c.r * a;
-		pg += c.g * a;
-		pb += c.b * a;
-	}
-	if (pa == 0) {
-		return;
-	}
-	int ia = 65536 - pa;
-
-	d->r = (pr + d->r * ia) >> 16;
-	d->g = (pg + d->g * ia) >> 16;
-	d->b = (pb + d->b * ia) >> 16;
 }
 
 /* Second hand coverage at (s along the hand, p across it). Returns alpha of
@@ -514,36 +428,46 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 		}
 
 		ST(0, tt);
-		/* 2. bezel ring: only its spans in this row */
-		const float ro = WATCH_BEZEL_OUT, ri = WATCH_BEZEL_IN - 1;
+		/* 2. bezel ring via the polar lookup: each ring pixel knows its angle
+		 *    and radius index; turning the bezel just offsets the angle
+		 */
+		if (ring) {
+			const int16_t *sp = (const int16_t *)watch_ring_spans + y * 4;
+			uint32_t idx = ((const uint32_t *)watch_ring_row_off)[y];
+			const uint16_t *lang = (const uint16_t *)watch_ring_ang;
+			const uint16_t *srgb = (const uint16_t *)watch_ring_rgb;
 
-		if (ring && fabsf(ry) < ro) {
-			float ho = sqrtf(ro * ro - ry * ry);
-			float hi = fabsf(ry) < ri ? sqrtf(ri * ri - ry * ry) : 0;
-			int spans[2][2] = {{(int)(CX - ho - 1), (int)(CX - hi + 1)},
-					   {(int)(CX + hi - 1), (int)(CX + ho + 1)}};
-			int nsp = hi > 0 ? 2 : 1;
+			for (int k = 0; k < 2; k++, sp += 2) {
+				int sa = sp[0], sb = sp[1];
 
-			if (nsp == 1) {
-				spans[0][1] = spans[1][1];
-			}
-			for (int sp = 0; sp < nsp; sp++) {
-				int a = MAX(x0, spans[sp][0]), b = MIN(x1, spans[sp][1]);
-				float rx = a + 0.5f - CX;
-				float bu = CX + rx * bez_cs + ry * bez_sn;
-				float bv = CX - rx * bez_sn + ry * bez_cs;
-
-				for (int x = a; x <= b; x++) {
-					struct rgb c = from565(o[x - x0]);
-
-					bezel_px(bu, bv, &c);
-					o[x - x0] = to565(&c);
-					bu += bez_cs;
-					bv -= bez_sn;
+				if (sb < sa) {
+					continue;
 				}
+				int a = MAX(x0, sa), b = MIN(x1, sb);
+				uint32_t i0 = idx + (a - sa);
+
+				for (int x = a; x <= b; x++, i0++) {
+					int an = (int)lang[i0] - ring_off;
+
+					if (an < 0) {
+						an += WATCH_RING_ANG;
+					}
+					uint32_t t = watch_ring_rad[i0] * WATCH_RING_ANG + an;
+					uint8_t al = watch_ring_a[t];
+
+					if (al == 255) {
+						o[x - x0] = srgb[t];
+					} else if (al) {
+						struct rgb c = from565(o[x - x0]);
+						struct rgb b2 = from565(srgb[t]);
+
+						over(&c, b2.r, b2.g, b2.b, al);
+						o[x - x0] = to565(&c);
+					}
+				}
+				idx += sb - sa + 1;
 			}
 		}
-
 		ST(1, tt);
 		/* 3. hour, minute and GMT hands, drawn as vector shapes (see vhand_px) */
 		for (int k = 0; k < 3; k++) {
@@ -833,7 +757,6 @@ int main(void)
 		angle_sc(0, &img_hands[k]->sn, &img_hands[k]->cs);
 		hand_bbox(k);
 	}
-	angle_sc(0, &bez_sn, &bez_cs);
 	sec_sn = 0;
 	sec_cs = 1;
 	for (int y = 0; y < N; y += BAND) {
@@ -934,8 +857,8 @@ int main(void)
 		/* the other hands only when they actually move */
 		for (int k = 0; k < 3; k++) {
 			struct img_hand *hd = img_hands[k];
-			int r = hd->w / 2 + 4;
-			float tip = hd->pvy + 2, tail = -(hd->h - hd->pvy) - 2;
+			int r = (int)vhands[k].reach + 6;
+			float tip = vhands[k].tip + 2, tail = vhands[k].tail - 2;
 
 			if (hd->ang == hd->shown) {
 				continue;
@@ -958,7 +881,7 @@ int main(void)
 		bool ring = bezel_rot != bezel_shown;
 
 		if (ring) {
-			angle_sc(bezel_rot, &bez_sn, &bez_cs);
+			ring_off = bezel_rot * WATCH_RING_ANG / 3600;
 			bezel_shown = bezel_rot;
 		}
 
