@@ -27,6 +27,7 @@ struct amp_pong {
 	uint32_t core_id;  /* from the PRID register: 0 = PROCPU, 1 = APPCPU */
 	int32_t disp_err;  /* 0 = test pattern drawn, else the error */
 	uint32_t draw_ms;  /* time to render + send the full pattern */
+	uint32_t bench_us; /* time to send one full 466x466 frame (no rendering) */
 };
 
 struct amp_touch {

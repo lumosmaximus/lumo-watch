@@ -74,7 +74,7 @@
 	amoled: display@0 {
 		compatible = "chipone,co5300-qspi";
 		reg = <0>;
-		spi-max-frequency = <40000000>;
+		spi-max-frequency = <80000000>;
 		width = <466>;
 		height = <466>;
 		/* the panel's visible columns start at 6 in controller RAM */

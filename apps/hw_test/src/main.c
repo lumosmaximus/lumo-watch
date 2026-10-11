@@ -100,8 +100,10 @@ static bool core1_alive(void)
 	static uint32_t seq;
 	struct amp_ping ping = {.magic = AMP_MAGIC, .seq = ++seq, .core0_ms = k_uptime_get_32()};
 
+	k_sem_reset(&pong_sem);
 	ipm_send(ipm, -1, AMP_MSG_PING, &ping, sizeof(ping));
-	return k_sem_take(&pong_sem, K_MSEC(200)) == 0 && pong.seq == seq && pong.core_id == 1;
+	/* core 1 may still be drawing/benchmarking; replies can lag */
+	return k_sem_take(&pong_sem, K_MSEC(1500)) == 0 && pong.core_id == 1;
 }
 
 /* ---- AXP2101 (direct registers, see apps/amp_hello for the map) ----------- */
@@ -310,6 +312,10 @@ int main(void)
 	if (c1) {
 		printk("  display:   %s  (core 1: CO5300 test pattern, err %d, %u ms)\n",
 		       PASS(pong.disp_err == 0), pong.disp_err, pong.draw_ms);
+		k_msleep(2500); /* core 1 runs its benchmark after drawing */
+		core1_alive();
+		printk("  display:   full 466x466 frame sent in %u us = %u fps max (bus only)\n",
+		       pong.bench_us, pong.bench_us ? 1000000 / pong.bench_us : 0);
 	}
 	gpio_pin_configure(exio, 4, GPIO_INPUT); /* SYS_OUT: PWR key, high while pressed */
 	k_msleep(1500);
@@ -332,6 +338,7 @@ int main(void)
 		       sensor_value_to_double(&gyr[1]), sensor_value_to_double(&gyr[2]),
 		       atomic_get(&boot_presses), pwr > 0 ? "DOWN" : "up", atomic_get(&touches),
 		       core1_alive() ? "ok" : "--", pw);
+		printk("    core1 uptime %u ms, frame %u us\n", pong.core1_ms, pong.bench_us);
 		k_msleep(1000);
 	}
 	return 0;
