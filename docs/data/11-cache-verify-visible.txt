@@ -1,0 +1,157 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x40377636
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fc91e70,len:0x2a6c
+load:0x40374000,len:0xde58
+load:0x50000000,len:0x24
+SHA-256 comparison failed:
+Calculated: c3dede8391f377d8de80245f57ed7cbe591159b31f7f1c2a4a6198d3a510ca53
+Expected: 00000000d0f60000000000000000000000000000000000000000000000000000
+Attempting to boot anyway...
+entry 0x4037af68
+I (soc_init): ESP Simple boot
+I (soc_init): compile time Oct 10 2026 20:05:40
+W (soc_init): Unicore bootloader
+I (soc_init): chip revision: v0.2
+I (qio_mode): Enabling QIO for flash chip WinBond
+I (flash_init): Boot SPI Speed : 80MHz
+I (flash_init): SPI Mode       : QIO
+I (flash_init): SPI Flash Size : 16MB
+I (boot): DRAM	: lma=00000020h vma=3fc91e70h size=02a6ch ( 10860)
+I (boot): IRAM	: lma=00002a94h vma=40374000h size=0de58h ( 56920)
+I (boot): RTC_DATA	: lma=000108f4h vma=50000000h size=00024h (    36)
+I (boot): IROM	: lma=00020000h vma=42000000h size=064d0h ( 25808)
+I (boot): DROM	: lma=00030000h vma=3c010000h size=01fb4h (  8116)
+I (boot): libc heap size 193 kB.
+I (cache): Instruction cache: size 16KB, 8Ways, cache line size 32Byte
+I (spi_flash): detected chip: winbond
+I (spi_flash): flash io: qio
+I (amp): APPCPU image, area id: 4, offset: 0xbc0000, hdr.off: 0x20, size: 1984 kB
+I (amp): IRAM segment: paddr=00bc0080h, vaddr=403b5000h, size=072b0h ( 29360) load
+I (amp): DRAM segment: paddr=00bc7320h, vaddr=3fccc2b0h, size=01520h (  5408) load
+I (amp): IROM segment: paddr=00bd0000h, vaddr=43e00000h, size=08cb8h ( 36024) map
+I (amp): DROM segment: paddr=00bf0000h, vaddr=3de10000h, size=1364a0h (1270944) map
+I (boot): DRAM	: lma=00000020h vma=3fc91e70h size=02a6ch ( 10860)
+I (boot): IRAM	: lma=00002a94h vma=40374000h size=0de58h ( 56920)
+I (boot): RTC_DATA	: lma=000108f4h vma=50000000h size=00024h (    36)
+I (boot): ???	: lma=00020000h vma=42000000h size=064d0h ( 25808)
+I (boot): ???	: lma=00030000h vma=3c010000h size=01fb4h (  8116)
+I (amp): Application start=403b8454h
+
+
+[00:00:00.004,000] <err> gpio_pca_series: i2c write error [-5]
+[00:00:00.004,000] <err> gpio_pca_series: soft reset failed (-5)
+[00:00:00.004,000] <err> gpio_pca_series: device reset error -5
+[00:00:00.004,000] <err> gpio_pca_series: gpio@20 init failed: -5
+[00:00:00.623,000] <err> pcf85063a: Failed to set hour format: -16
+[00:00:01.931,000] <wrn> cst9217: chip id read failed (-16)
+*** Booting Zephyr OS build v4.5.0-rc1-274-g3d3d4573d664 ***
+
+*** watch: core 0 ***
+[00:00:03.169,000] <err> pcf85063a: Unable to get time. Err: -16
+[00:00:04.088,000] <err> pcf85063a: Unable to get time. Err: -16
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038
+core 1: 60 fps, 7 us/frame: 0 px in 0 boxes, composite 0 us, write 0 us
+   stages us: bg 0 ring 0 hands 0 sec 0 (0 px) swap 0
+   spi: 0 underruns, overlap 2425038

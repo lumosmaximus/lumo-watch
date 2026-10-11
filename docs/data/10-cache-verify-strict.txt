@@ -1,0 +1,162 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x40377636
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fc91e70,len:0x2a6c
+load:0x40374000,len:0xde58
+load:0x50000000,len:0x24
+SHA-256 comparison failed:
+Calculated: c3dede8391f377d8de80245f57ed7cbe591159b31f7f1c2a4a6198d3a510ca53
+Expected: 00000000d0f60000000000000000000000000000000000000000000000000000
+Attempting to boot anyway...
+entry 0x4037af68
+I (soc_init): ESP Simple boot
+I (soc_init): compile time Oct 10 2026 20:05:40
+W (soc_init): Unicore bootloader
+I (soc_init): chip revision: v0.2
+I (qio_mode): Enabling QIO for flash chip WinBond
+I (flash_init): Boot SPI Speed : 80MHz
+I (flash_init): SPI Mode       : QIO
+I (flash_init): SPI Flash Size : 16MB
+I (boot): DRAM	: lma=00000020h vma=3fc91e70h size=02a6ch ( 10860)
+I (boot): IRAM	: lma=00002a94h vma=40374000h size=0de58h ( 56920)
+I (boot): RTC_DATA	: lma=000108f4h vma=50000000h size=00024h (    36)
+I (boot): IROM	: lma=00020000h vma=42000000h size=064d0h ( 25808)
+I (boot): DROM	: lma=00030000h vma=3c010000h size=01fb4h (  8116)
+I (boot): libc heap size 193 kB.
+I (cache): Instruction cache: size 16KB, 8Ways, cache line size 32Byte
+I (spi_flash): detected chip: winbond
+I (spi_flash): flash io: qio
+I (amp): APPCPU image, area id: 4, offset: 0xbc0000, hdr.off: 0x20, size: 1984 kB
+I (amp): IRAM segment: paddr=00bc0080h, vaddr=403b5000h, size=07250h ( 29264) load
+I (amp): DRAM segment: paddr=00bc72c0h, vaddr=3fccc250h, size=01520h (  5408) load
+I (amp): IROM segment: paddr=00bd0000h, vaddr=43e00000h, size=08cb8h ( 36024) map
+I (amp): DROM segment: paddr=00bf0000h, vaddr=3de10000h, size=1364a0h (1270944) map
+I (boot): DRAM	: lma=00000020h vma=3fc91e70h size=02a6ch ( 10860)
+I (boot): IRAM	: lma=00002a94h vma=40374000h size=0de58h ( 56920)
+I (boot): RTC_DATA	: lma=000108f4h vma=50000000h size=00024h (    36)
+I (boot): ???	: lma=00020000h vma=42000000h size=064d0h ( 25808)
+I (boot): ???	: lma=00030000h vma=3c010000h size=01fb4h (  8116)
+I (amp): Application start=403b83ech
+
+
+[00:00:00.005,000] <wrn> gpio_pca_series: pca interrupt enabled w/o int-gpios configured in dts
+[00:00:00.005,000] <inf> gpio_pca_series: gpio@20 init ok
+[00:00:00.076,000] <inf> cst9217: chip type 0x9217, project 0x5734
+*** Booting Zephyr OS build v4.5.0-rc1-274-g3d3d4573d664 ***
+
+*** watch: core 0 ***
+core 1 bench (CPU cycles per pixel): flash sequential 18.8, flash band pattern 22.5, internal RAM 12.0, second-hand maths 102.2
+core 1 bench: render_box dial only 122.9, with hands 314.1 cycles/px
+time -> core 1: 2026-10-10 20:37:06
+core 1: 55 fps, 13416 us/frame: 16254 px in 24 boxes, composite 14755 us, write 790 us
+   stages us: bg 1205 ring 2223 hands 6882 sec 3550 (3454 px) swap 764
+   spi: 89189 underruns, overlap 2425038
+core 1: 58 fps, 14868 us/frame: 14100 px in 26 boxes, composite 14174 us, write 533 us
+   stages us: bg 927 ring 1328 hands 6994 sec 4114 (4136 px) swap 671
+   spi: 87458 underruns, overlap 4194644
+core 1: 58 fps, 15024 us/frame: 14467 px in 24 boxes, composite 14361 us, write 501 us
+   stages us: bg 904 ring 1346 hands 7231 sec 4057 (4192 px) swap 690
+   spi: 81330 underruns, overlap 6160739
+core 1: 58 fps, 14757 us/frame: 14400 px in 22 boxes, composite 14144 us, write 451 us
+   stages us: bg 850 ring 1342 hands 7228 sec 3924 (4186 px) swap 681
+   spi: 80047 underruns, overlap 6291818
+core 1: 58 fps, 13968 us/frame: 13932 px in 18 boxes, composite 13420 us, write 387 us
+   stages us: bg 727 ring 1317 hands 6902 sec 3719 (4122 px) swap 654
+   spi: 83363 underruns, overlap 13369574
+core 1: 58 fps, 13782 us/frame: 13736 px in 16 boxes, composite 13285 us, write 338 us
+   stages us: bg 685 ring 1328 hands 6945 sec 3594 (4128 px) swap 643
+   spi: 91768 underruns, overlap 13369578
+core 1: 57 fps, 13697 us/frame: 13829 px in 13 boxes, composite 13225 us, write 278 us
+   stages us: bg 658 ring 1306 hands 7041 sec 3503 (4253 px) swap 644
+   spi: 102736 underruns, overlap 13369584
+core 1: 59 fps, 12787 us/frame: 12902 px in 10 boxes, composite 12402 us, write 221 us
+   stages us: bg 540 ring 1272 hands 6557 sec 3375 (4382 px) swap 599
+   spi: 125319 underruns, overlap 13369596
+core 1: 59 fps, 11939 us/frame: 12151 px in 7 boxes, composite 11595 us, write 155 us
+   stages us: bg 465 ring 1185 hands 6081 sec 3260 (4748 px) swap 562
+   spi: 117539 underruns, overlap 13369626
+core 1: 59 fps, 11899 us/frame: 11964 px in 7 boxes, composite 11548 us, write 149 us
+   stages us: bg 520 ring 1192 hands 6035 sec 3208 (4817 px) swap 553
+   spi: 103429 underruns, overlap 13631904
+core 1: 59 fps, 12351 us/frame: 12639 px in 9 boxes, composite 11984 us, write 198 us
+   stages us: bg 543 ring 1240 hands 6253 sec 3309 (4433 px) swap 587
+   spi: 138619 underruns, overlap 13631688
+core 1: 58 fps, 12789 us/frame: 13263 px in 12 boxes, composite 12364 us, write 264 us
+   stages us: bg 584 ring 1265 hands 6435 sec 3391 (4193 px) swap 617
+   spi: 144127 underruns, overlap 13631688
+core 1: 58 fps, 13226 us/frame: 13798 px in 15 boxes, composite 12747 us, write 316 us
+   stages us: bg 685 ring 1303 hands 6480 sec 3547 (4203 px) swap 647
+   spi: 117509 underruns, overlap 13369539
+core 1: 58 fps, 13671 us/frame: 14392 px in 18 boxes, composite 13123 us, write 385 us
+   stages us: bg 804 ring 1346 hands 6478 sec 3713 (4198 px) swap 678
+   spi: 91979 underruns, overlap 13435076
+core 1: 58 fps, 13695 us/frame: 14498 px in 21 boxes, composite 13102 us, write 430 us
+   stages us: bg 823 ring 1344 hands 6326 sec 3811 (4187 px) swap 684
+   spi: 76265 underruns, overlap 13435076
+core 1: 58 fps, 14047 us/frame: 14736 px in 24 boxes, composite 13395 us, write 489 us
+   stages us: bg 891 ring 1343 hands 6381 sec 3954 (4190 px) swap 696
+   spi: 76598 underruns, overlap 13435076
+core 1: 58 fps, 13929 us/frame: 14417 px in 25 boxes, composite 13247 us, write 521 us
+   stages us: bg 898 ring 1321 hands 6216 sec 3988 (4132 px) swap 686
+   spi: 70516 underruns, overlap 13435076
+core 1: 58 fps, 14708 us/frame: 14956 px in 27 boxes, composite 13951 us, write 567 us
+   stages us: bg 968 ring 1317 hands 6649 sec 4156 (4217 px) swap 711
+   spi: 62078 underruns, overlap 13435076
+core 1: 58 fps, 14332 us/frame: 14252 px in 30 boxes, composite 13549 us, write 617 us
+   stages us: bg 934 ring 1296 hands 6168 sec 4311 (4229 px) swap 678
+   spi: 46247 underruns, overlap 13435076
+core 1: 58 fps, 14229 us/frame: 13734 px in 31 boxes, composite 13420 us, write 644 us
+   stages us: bg 852 ring 1259 hands 6088 sec 4395 (4236 px) swap 656
+   spi: 48278 underruns, overlap 13435076
+core 1: 58 fps, 14006 us/frame: 13091 px in 32 boxes, composite 13176 us, write 665 us
+   stages us: bg 730 ring 1233 hands 5943 sec 4468 (4238 px) swap 626
+   spi: 39507 underruns, overlap 13435078
+core 1: 58 fps, 13585 us/frame: 12149 px in 32 boxes, composite 12754 us, write 668 us
+   stages us: bg 667 ring 1159 hands 5724 sec 4445 (4166 px) swap 582
+   spi: 33298 underruns, overlap 13435082
+core 1: 58 fps, 13321 us/frame: 11351 px in 33 boxes, composite 12480 us, write 678 us
+   stages us: bg 567 ring 1116 hands 5587 sec 4485 (4162 px) swap 546
+   spi: 30101 underruns, overlap 13435088
+core 1: 59 fps, 13075 us/frame: 10555 px in 34 boxes, composite 12219 us, write 690 us
+   stages us: bg 422 ring 1014 hands 5530 sec 4560 (4227 px) swap 509
+   spi: 27614 underruns, overlap 13435110
+core 1: 58 fps, 13289 us/frame: 10704 px in 34 boxes, composite 12432 us, write 691 us
+   stages us: bg 510 ring 1040 hands 5595 sec 4587 (4230 px) swap 516
+   spi: 24983 underruns, overlap 13435110
+core 1: 58 fps, 13636 us/frame: 11455 px in 33 boxes, composite 12793 us, write 679 us
+   stages us: bg 584 ring 1154 hands 5804 sec 4521 (4163 px) swap 550
+   spi: 24844 underruns, overlap 13435110
+[00:00:00.003,000] <wrn> gpio_pca_series: pca interrupt enabled w/o int-gpios configured in dts
+[00:00:00.003,000] <inf> gpio_pca_series: gpio@20 init ok
+[00:00:00.074,000] <inf> cst9217: chip type 0x9217, project 0x5734
+*** Booting Zephyr OS build v4.5.0-rc1-274-g3d3d4573d664 ***
+
+*** watch: core 0 ***
+RTC had no time: set from build time Oct 10 2026 20:49:49
+time -> core 1: 2026-10-10 20:49:50
+core 1 bench (CPU cycles per pixel): flash sequential 18.8, flash band pattern 22.5, internal RAM 12.0, second-hand maths 102.3
+core 1 bench: render_box dial only 122.9, with hands 314.1 cycles/px
+core 1: 29 fps, 22579 us/frame: 23284 px in 25 boxes, composite 25692 us, write 1073 us
+   stages us: bg 1592 ring 3594 hands 15192 sec 4090 (4338 px) swap 1086
+   spi: 110227 underruns, overlap 8912946
+core 1: 30 fps, 20430 us/frame: 14509 px in 24 boxes, composite 19751 us, write 508 us
+   stages us: bg 899 ring 1371 hands 12668 sec 3993 (4198 px) swap 684
+   spi: 66193 underruns, overlap 6160446
+core 1: 30 fps, 18737 us/frame: 14456 px in 27 boxes, composite 18012 us, write 553 us
+   stages us: bg 866 ring 1350 hands 10857 sec 4107 (4211 px) swap 683
+   spi: 30208 underruns, overlap 6160460
+core 1: 51 fps, 16706 us/frame: 14152 px in 29 boxes, composite 15944 us, write 600 us
+   stages us: bg 916 ring 1311 hands 8634 sec 4249 (4226 px) swap 673
+   spi: 22183 underruns, overlap 6160476
+core 1: 58 fps, 15301 us/frame: 13696 px in 30 boxes, composite 14515 us, write 626 us
+   stages us: bg 870 ring 1250 hands 7228 sec 4344 (4232 px) swap 655
+   spi: 18428 underruns, overlap 6160527
+core 1: 58 fps, 14713 us/frame: 13147 px in 31 boxes, composite 13902 us, write 650 us
+   stages us: bg 764 ring 1217 hands 6690 sec 4426 (4239 px) swap 632
+   spi: 15015 underruns, overlap 6160527
+core 1: 58 fps, 14523 us/frame: 12736 px in 33 boxes, composite 13679 us, write 682 us
+   stages us: bg 757 ring 1227 hands 6367 sec 4534 (4241 px) swap 612
+   spi: 11807 underruns, overlap 6160540

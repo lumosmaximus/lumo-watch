@@ -1,0 +1,208 @@
+# Making a watch face glide: an optimization log
+
+Board: Waveshare ESP32-S3-Touch-AMOLED-1.75 (466x466 round AMOLED, CO5300 over
+QSPI, ESP32-S3 at 240 MHz), Zephyr, both cores used as AMP. Goal: a GMT watch
+face whose second hand glides at the panel's 60 Hz refresh, with a bezel you
+can turn by touch, clicking at 1-minute (6 degree) steps.
+
+This is the order things actually happened, dead ends included. Numbers are
+from the board, printed once a second by core 0 from stats core 1 sends it.
+
+## 0. The setup: two cores, two images
+
+Zephyr has no SMP for the ESP32-S3, so the two cores run AMP: two separate
+Zephyr images, built together with sysbuild.
+
+- **Core 0 (PROCPU):** I2C sensors, RTC, touch, buttons, (later) audio, USB,
+  Wi-Fi. It boots first and loads core 1's image from its own flash partition.
+- **Core 1 (APPCPU):** the display, nothing else. 128 KB of internal RAM of its
+  own, the SPI2 controller and GDMA channel pair 0.
+- **Between them:** IPM messages over a small shared-memory block (~12 us round
+  trip). Core 0 sends the time on each RTC second edge and forwards touches;
+  core 1 sends frame statistics back.
+
+Core 1 lists only GDMA pair 0's interrupts in its devicetree, so it never
+takes core 0's I2S DMA interrupts (pair 1).
+
+## 1. LVGL: 12-26 fps
+
+The first face was LVGL widgets with rotated image hands. 12 to 26 fps,
+varying with the hand angle.
+
+## 2. Quad flash: 23-57 fps, and a jiggling dot
+
+Core 1 runs its code and reads the dial image from flash through the cache.
+The flash was in dual mode; the W25Q128 supports quad I/O. Setting QIO in the
+board's defaults doubled flash bandwidth: 23-57 fps.
+
+The second hand (an LVGL line snapped to whole pixels) visibly jiggled: its
+lume dot hopped between pixel positions. A gliding hand needs sub-pixel
+positions and anti-aliasing.
+
+## 3. LVGL image hand: down to 4 fps
+
+Drawing the second hand as a rotated image with small invalidated areas
+overflowed LVGL's invalidation list (`LV_INV_BUF_SIZE`, default 32). On
+overflow LVGL redraws the whole screen: 4 fps. Raising it to 96 fixed the
+cliff but it was still slow.
+
+## 4. Own compositor: 4-10 fps, then measure instead of guess
+
+LVGL went; core 1 got a small compositor of its own. Each dirty pixel is built
+back to front: dial (RGB565 in flash), date window, rotated bezel, hands,
+second hand. First result: 4-10 fps.
+
+- `floorf`, `sqrtf`, `fmaxf` were library calls, not FPU instructions
+  (`-fno-math-errno`, own inline min/max/floor).
+- Hot loop in IRAM, helpers force-inlined. Still ~2.4 us per pixel.
+
+A micro-benchmark on the device settled where time went: a flash read cost
+only ~20 cycles per pixel, but a plain dial-only box cost **315 cycles per
+pixel**. The per-pixel code was the problem, not memory.
+
+Restructuring from "per pixel, ask every layer" to "per row, each layer does
+its span" cut that to **107 cycles/pixel** and took the face from 20 to a
+steady 30 fps.
+
+## 5. Stage counters: the hands were the cost
+
+Cycle counters around each stage of a row (background copy, bezel, hands,
+second hand, byte swap) showed the rotated, bilinear-filtered image hands
+costing 12-20 ms a frame.
+
+- **Vector hands:** each hand is described in its own coordinates (s along
+  it, p across it) as bars, triangles and discs, with analytic anti-aliasing.
+  Disc coverage uses the squared distance with a linear ramp, so there is no
+  `sqrt` per pixel.
+- **Span solving:** for each row, solve where the row crosses a hand's
+  footprint (a few linear inequalities) and shade only that x range.
+- **Cheap path:** most second-hand pixels are on the plain shaft, so it has a
+  fast path that skips the dot, counterweight and cap tests.
+
+Result: **59 fps**.
+
+## 6. Frame pacing and dirty bands
+
+- **TE lock:** the panel's tearing-effect pin (GPIO13) pulses at the start of
+  each refresh. Core 1 polls it and starts each frame there: no tearing, even
+  cadence.
+- **Dirty bands:** only what moved is redrawn: the second hand's old and new
+  positions, other hands when their angle changes, the date when it changes.
+  Areas are tracked as 8-row bands, each only as wide as needed, and each band
+  is one window write to the panel.
+- Time comes from core 0 at each RTC second; core 1 adds milliseconds from its
+  own uptime. Angles are in 0.1 degree units, so at 60 fps the second hand
+  moves exactly 0.1 degree per frame.
+
+## 7. The bezel
+
+- **Bilinear rotation:** first version. Turning the bezel repaints the whole
+  ring, which took 20-90 ms a frame: dragging stutters.
+- **Polar lookup table:** each ring pixel precomputed with its angle and
+  radius index; turning the bezel just offsets the angle. Ring stage 0.4 ms.
+  A bug at 9 o'clock (a negative window start, not clamped) left pixels that
+  never updated.
+- **Progressive repaint:** the ring repainted a few bands per frame within a
+  time budget, so the second hand never waited. It looked worse: for a few
+  frames parts of the ring showed the old angle.
+
+## 8. The lesson: cadence beats average frame rate
+
+By now the face ran 59 fps most of the time, but frames that took just over
+16.7 ms (second hand crossing another hand, bezel moving) missed a refresh and
+dropped to 30 fps for a second or two. It looked worse than earlier, slower
+versions. The eye notices the change of rhythm, not the average.
+
+Things tried that made it worse:
+
+- **Async writer thread:** a second thread on core 1 sent band buffers while
+  the main thread composed the next. Compositing got ~1.4 ms slower (thread
+  switches, interrupts per transfer) and the write time did not overlap.
+- **Start late frames immediately** instead of waiting for the next TE: the
+  frame start drifts off the refresh, which shows as judder.
+- **Locking to a steady 30 fps:** smooth but not what we wanted.
+
+So we went back to the version before the bezel lookup table, which looked
+best, and attacked the worst-case frame instead.
+
+## 9. Direct SPI: write time 3.4 ms -> 0.5 ms
+
+Each dirty band was a `display_write()`: three SPI driver transactions
+(column address, row address, pixels), each reconfiguring the GDMA, with the
+single-line command header "bit-expanded" into quad data. About 100 us of
+overhead per window, ~30 windows a frame.
+
+`qspi_fast.c` now drives the SPI2 registers directly after Zephyr has set
+things up (pins, clock, GDMA channel connection):
+
+- The SPI peripheral's own command (8 bit) and address (24 bit) phases send
+  the CO5300 header on one line, then data on one line (parameters, from the
+  CPU buffer) or four lines (pixels, by DMA). No bit expansion.
+- Column/row address commands take about a microsecond each.
+- **Double buffering without a thread:** two band buffers. The pixel DMA for
+  one band is started, and the CPU composes the next band into the other
+  buffer; before reusing a buffer it waits for that buffer's transfer to
+  finish.
+- The SPI's "TX FIFO ran empty" flag is counted every transfer: zero, so the
+  DMA keeps up while the CPU works.
+
+## 10. The hand cache that corrupted the screen
+
+The hands stage still cost 4-9 ms when the second hand crossed other hands.
+The other hands move at most once a second, so a cache kept the finished
+pixels under them, refreshed only where a hand moved. Hands stage: 5.5 ms ->
+0.5 ms, frames ~9 ms.
+
+But the panel showed corrupt pixels. Bisecting on the device:
+
+| Build | Result |
+|---|---|
+| direct SPI, no cache | clean |
+| + hand cache | corrupt |
+| cache compiled out | clean |
+| cache on, every cached pixel re-checked against a full recompute | corrupt on screen, zero visible mismatches in memory |
+| cache on, RAM overlap fixed (below) | corrupt |
+| cache on, no DMA/compositing overlap | corrupt |
+| cache logic off, cache memory kept (same buffer addresses) | clean |
+
+The cache's pixels were right in memory, yet the screen was wrong only with
+the cache logic running. Unsolved; the cache was removed, since direct SPI
+alone keeps the frame under budget.
+
+**A real bug found on the way:** core 0 and core 1 disagreed about where RAM
+ends. Core 0's image (simple-boot format) took 0x3fce9704; core 1's (MCUboot
+format) took the IPC area start, 0x3fce5000. In Zephyr's `memory.h` the
+simple-boot case wins over the AMP case, so core 0 carved out core 1's 128 KB
+from 18 KB too high: the top of core 0's heap overlapped the start of core
+1's code. It stayed hidden because core 0 barely uses its heap. The board
+config now reserves 0x4800 more on core 0.
+
+## Concurrency and timing techniques used
+
+- AMP: one core per job, separate images, no shared scheduler.
+- IPM messages with a small payload in shared memory; the interrupt handler
+  only copies, the main loop acts.
+- Frame start locked to the panel's TE signal (polled GPIO).
+- Dirty regions instead of full frames.
+- DMA transfer of one band overlapping CPU composition of the next (double
+  buffering, no threads).
+- Time from two sources: RTC second edges from core 0, sub-second from core
+  1's uptime.
+- Measurement built in: per-stage cycle counters, a boot-time micro-benchmark,
+  SPI underrun counter, on-device self-check of cached pixels.
+
+## Where it stands
+
+| | ms per frame |
+|---|---|
+| background copy | ~0.5-1 |
+| bezel (no turn) | ~1.3 |
+| GMT/hour/minute hands | 4-9 |
+| second hand | ~4.5 |
+| byte swap | ~0.6 |
+| SPI writes (mostly overlapped) | ~0.5-0.7 |
+| **typical total** | **~12 of 16.7** |
+
+59 fps locked to the panel. Remaining dips: turning the bezel (ring repaint
+20-66 ms) and the second hand crossing the other hands (hands stage up to
+~9 ms).

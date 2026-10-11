@@ -1,0 +1,189 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x403763ff
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fc91e70,len:0x2a6c
+load:0x40374000,len:0xde58
+load:0x50000000,len:0x24
+SHA-256 comparison failed:
+Calculated: 2316ee11f8c6a7ecc5547f76cecb96aadd76e9dab3de319e13bce2d9b76fa0fd
+Expected: 00000000d0f60000000000000000000000000000000000000000000000000000
+Attempting to boot anyway...
+entry 0x4037af68
+I (soc_init): ESP Simple boot
+I (soc_init): compile time Oct 10 2026 20:05:40
+W (soc_init): Unicore bootloader
+I (soc_init): chip revision: v0.2
+I (qio_mode): Enabling QIO for flash chip WinBond
+I (flash_init): Boot SPI Speed : 80MHz
+I (flash_init): SPI Mode       : QIO
+I (flash_init): SPI Flash Size : 16MB
+I (boot): DRAM	: lma=00000020h vma=3fc91e70h size=02a6ch ( 10860)
+I (boot): IRAM	: lma=00002a94h vma=40374000h size=0de58h ( 56920)
+I (boot): RTC_DATA	: lma=000108f4h vma=50000000h size=00024h (    36)
+I (boot): IROM	: lma=00020000h vma=42000000h size=064b0h ( 25776)
+I (boot): DROM	: lma=00030000h vma=3c010000h size=01f94h (  8084)
+I (boot): libc heap size 193 kB.
+I (cache): Instruction cache: size 16KB, 8Ways, cache line size 32Byte
+I (spi_flash): detected chip: winbond
+I (spi_flash): flash io: qio
+I (amp): APPCPU image, area id: 4, offset: 0xbc0000, hdr.off: 0x20, size: 1984 kB
+I (amp): IRAM segment: paddr=00bc0080h, vaddr=403b5000h, size=06120h ( 24864) load
+I (amp): DRAM segment: paddr=00bc6190h, vaddr=3fccb120h, size=014e0h (  5344) load
+I (amp): IROM segment: paddr=00bd0000h, vaddr=43e00000h, size=08a70h ( 35440) map
+I (amp): DROM segment: paddr=00bf0000h, vaddr=3de10000h, size=d7cc0h (883904) map
+I (boot): DRAM	: lma=00000020h vma=3fc91e70h size=02a6ch ( 10860)
+I (boot): IRAM	: lma=00002a94h vma=40374000h size=0de58h ( 56920)
+I (boot): RTC_DATA	: lma=000108f4h vma=50000000h size=00024h (    36)
+I (boot): ???	: lma=00020000h vma=42000000h size=064b0h ( 25776)
+I (boot): ???	: lma=00030000h vma=3c010000h size=01f94h (  8084)
+I (amp): Application start=403b7738h
+
+
+[00:00:00.005,000] <wrn> gpio_pca_series: pca interrupt enabled w/o int-gpios configured in dts
+[00:00:00.005,000] <inf> gpio_pca_series: gpio@20 init ok
+[00:00:00.075,000] <inf> cst9217: chip type 0x9217, project 0x5734
+*** Booting Zephyr OS build v4.5.0-rc1-274-g3d3d4573d664 ***
+
+*** watch: core 0 ***
+time -> core 1: 2026-10-10 20:19:54
+core 1 bench (CPU cycles per pixel): flash sequential 18.7, flash band pattern 22.5, internal RAM 11.0, second-hand maths 88.1
+core 1 bench: render_box dial only 91.0, with hands 299.0 cycles/px
+core 1: 57 fps, 15001 us/frame: 18299 px in 31 boxes, composite 12687 us, write 3673 us
+   stages us: bg 1421 ring 885 hands 4924 sec 4402 (4307 px) swap 897
+core 1: 59 fps, 14286 us/frame: 13035 px in 31 boxes, composite 10836 us, write 3334 us
+   stages us: bg 1000 ring 503 hands 4216 sec 4311 (4166 px) swap 649
+core 1: 59 fps, 14438 us/frame: 12744 px in 33 boxes, composite 10846 us, write 3473 us
+   stages us: bg 953 ring 493 hands 4133 sec 4464 (4239 px) swap 637
+core 1: 59 fps, 14143 us/frame: 11960 px in 33 boxes, composite 10528 us, write 3497 us
+   stages us: bg 903 ring 434 hands 3955 sec 4468 (4166 px) swap 600
+core 1: 59 fps, 14193 us/frame: 11428 px in 35 boxes, composite 10494 us, write 3579 us
+   stages us: bg 824 ring 444 hands 3884 sec 4592 (4233 px) swap 575
+core 1: 59 fps, 13966 us/frame: 10939 px in 35 boxes, composite 10291 us, write 3555 us
+   stages us: bg 725 ring 381 hands 3873 sec 4585 (4224 px) swap 552
+core 1: 59 fps, 13795 us/frame: 10908 px in 34 boxes, composite 10185 us, write 3497 us
+   stages us: bg 795 ring 400 hands 3730 sec 4537 (4161 px) swap 550
+core 1: 59 fps, 14272 us/frame: 11929 px in 34 boxes, composite 10588 us, write 3568 us
+   stages us: bg 913 ring 437 hands 3857 sec 4609 (4235 px) swap 599
+core 1: 59 fps, 14337 us/frame: 12631 px in 33 boxes, composite 10699 us, write 3523 us
+   stages us: bg 983 ring 435 hands 3907 sec 4573 (4242 px) swap 632
+core 1: 59 fps, 14001 us/frame: 12831 px in 31 boxes, composite 10545 us, write 3343 us
+   stages us: bg 1083 ring 398 hands 3853 sec 4414 (4167 px) swap 640
+core 1: 59 fps, 14255 us/frame: 13617 px in 30 boxes, composite 10810 us, write 3331 us
+   stages us: bg 1239 ring 419 hands 3897 sec 4424 (4232 px) swap 677
+core 1: 59 fps, 14084 us/frame: 14096 px in 29 boxes, composite 10727 us, write 3243 us
+   stages us: bg 1182 ring 462 hands 3892 sec 4346 (4226 px) swap 699
+core 1: 59 fps, 13773 us/frame: 14272 px in 27 boxes, composite 10585 us, write 3074 us
+   stages us: bg 1146 ring 509 hands 3869 sec 4220 (4211 px) swap 705
+core 1: 60 fps, 13244 us/frame: 14128 px in 24 boxes, composite 10288 us, write 2842 us
+   stages us: bg 1116 ring 519 hands 3816 sec 4017 (4129 px) swap 696
+core 1: 59 fps, 13643 us/frame: 14904 px in 24 boxes, composite 10680 us, write 2834 us
+   stages us: bg 1205 ring 786 hands 3861 sec 3975 (4119 px) swap 733
+core 1: 59 fps, 13801 us/frame: 15249 px in 21 boxes, composite 10979 us, write 2678 us
+   stages us: bg 1297 ring 1019 hands 3891 sec 3915 (4191 px) swap 749
+core 1: 60 fps, 13527 us/frame: 15152 px in 19 boxes, composite 10898 us, write 2487 us
+   stages us: bg 1277 ring 1081 hands 3936 sec 3764 (4131 px) swap 741
+core 1: 59 fps, 12880 us/frame: 14720 px in 16 boxes, composite 10601 us, write 2155 us
+   stages us: bg 1195 ring 993 hands 3982 sec 3633 (4229 px) swap 717
+core 1: 60 fps, 11280 us/frame: 13252 px in 11 boxes, composite 9459 us, write 1708 us
+   stages us: bg 858 ring 521 hands 3955 sec 3423 (4316 px) swap 641
+core 1: 60 fps, 10339 us/frame: 12249 px in 8 boxes, composite 8843 us, write 1382 us
+   stages us: bg 709 ring 426 hands 3805 sec 3273 (4546 px) swap 587
+[00:00:00.003,000] <wrn> gpio_pca_series: pca interrupt enabled w/o int-gpios configured in dts
+[00:00:00.003,000] <inf> gpio_pca_series: gpio@20 init ok
+[00:00:00.074,000] <inf> cst9217: chip type 0x9217, project 0x5734
+*** Booting Zephyr OS build v4.5.0-rc1-274-g3d3d4573d664 ***
+
+*** watch: core 0 ***
+RTC had no time: set from build time Oct 10 2026 20:19:38
+time -> core 1: 2026-10-10 20:19:39
+core 1 bench (CPU cycles per pixel): flash sequential 18.7, flash band pattern 22.5, internal RAM 11.0, second-hand maths 88.1
+core 1 bench: render_box dial only 91.0, with hands 299.0 cycles/px
+core 1: 57 fps, 15996 us/frame: 19662 px in 22 boxes, composite 14327 us, write 3007 us
+   stages us: bg 1604 ring 1289 hands 6417 sec 3948 (4194 px) swap 954
+core 1: 58 fps, 16014 us/frame: 15290 px in 19 boxes, composite 13424 us, write 2458 us
+   stages us: bg 1279 ring 1037 hands 6473 sec 3791 (4201 px) swap 747
+core 1: 59 fps, 14933 us/frame: 14365 px in 15 boxes, composite 12757 us, write 2062 us
+   stages us: bg 1071 ring 808 hands 6512 sec 3589 (4223 px) swap 700
+core 1: 59 fps, 13181 us/frame: 13130 px in 11 boxes, composite 11382 us, write 1684 us
+   stages us: bg 735 ring 457 hands 6082 sec 3414 (4308 px) swap 635
+core 1: 60 fps, 11790 us/frame: 12364 px in 8 boxes, composite 10271 us, write 1406 us
+   stages us: bg 604 ring 419 hands 5327 sec 3283 (4525 px) swap 593
+core 1: 60 fps, 10688 us/frame: 11769 px in 6 boxes, composite 9350 us, write 1227 us
+   stages us: bg 555 ring 386 hands 4611 sec 3204 (4971 px) swap 561
+core 1: 60 fps, 10781 us/frame: 12219 px in 8 boxes, composite 9295 us, write 1374 us
+   stages us: bg 609 ring 416 hands 4385 sec 3257 (4546 px) swap 586
+core 1: 60 fps, 11759 us/frame: 13043 px in 11 boxes, composite 9964 us, write 1681 us
+   stages us: bg 746 ring 463 hands 4675 sec 3390 (4316 px) swap 631
+core 1: 59 fps, 12401 us/frame: 13379 px in 14 boxes, composite 10392 us, write 1895 us
+   stages us: bg 852 ring 487 hands 4893 sec 3436 (4155 px) swap 652
+core 1: 59 fps, 14405 us/frame: 13972 px in 17 boxes, composite 12062 us, write 2227 us
+   stages us: bg 940 ring 527 hands 6171 sec 3651 (4199 px) swap 683
+core 1: 62 fps, 14825 us/frame: 13214 px in 18 boxes, composite 12439 us, write 2277 us
+   stages us: bg 955 ring 510 hands 6717 sec 3514 (3918 px) swap 648
+core 1: 61 fps, 16389 us/frame: 14181 px in 22 boxes, composite 13602 us, write 2672 us
+   stages us: bg 1078 ring 555 hands 7314 sec 3844 (4118 px) swap 697
+core 1: 62 fps, 15662 us/frame: 13870 px in 24 boxes, composite 12761 us, write 2787 us
+   stages us: bg 1065 ring 526 hands 6486 sec 3878 (4064 px) swap 684
+core 1: 59 fps, 15245 us/frame: 14240 px in 27 boxes, composite 12057 us, write 3070 us
+   stages us: bg 1106 ring 539 hands 5452 sec 4119 (4211 px) swap 704
+core 1: 59 fps, 14528 us/frame: 13843 px in 29 boxes, composite 11220 us, write 3191 us
+   stages us: bg 1076 ring 519 hands 4620 sec 4173 (4154 px) swap 686
+core 1: 59 fps, 14565 us/frame: 13605 px in 30 boxes, composite 11115 us, write 3331 us
+   stages us: bg 1029 ring 496 hands 4432 sec 4328 (4232 px) swap 676
+core 1: 59 fps, 14452 us/frame: 13047 px in 32 boxes, composite 10930 us, write 3404 us
+   stages us: bg 995 ring 492 hands 4227 sec 4406 (4239 px) swap 650
+core 1: 59 fps, 14262 us/frame: 12404 px in 33 boxes, composite 10681 us, write 3464 us
+   stages us: bg 955 ring 480 hands 4031 sec 4429 (4169 px) swap 620
+core 1: 59 fps, 14346 us/frame: 11929 px in 34 boxes, composite 10655 us, write 3572 us
+   stages us: bg 904 ring 446 hands 3969 sec 4563 (4234 px) swap 599
+core 1: 59 fps, 14025 us/frame: 11087 px in 35 boxes, composite 10346 us, write 3560 us
+   stages us: bg 763 ring 418 hands 3834 sec 4596 (4232 px) swap 559
+core 1: 59 fps, 13964 us/frame: 10935 px in 35 boxes, composite 10293 us, write 3552 us
+   stages us: bg 736 ring 374 hands 3866 sec 4589 (4224 px) swap 552
+core 1: 59 fps, 14133 us/frame: 11423 px in 35 boxes, composite 10446 us, write 3571 us
+   stages us: bg 836 ring 421 hands 3818 sec 4620 (4233 px) swap 575
+core 1: 59 fps, 14278 us/frame: 12166 px in 34 boxes, composite 10612 us, write 3551 us
+   stages us: bg 926 ring 428 hands 3880 sec 4596 (4238 px) swap 610
+core 1: 59 fps, 14266 us/frame: 12761 px in 33 boxes, composite 10683 us, write 3468 us
+   stages us: bg 1015 ring 419 hands 3909 sec 4537 (4239 px) swap 638
+core 1: 59 fps, 14303 us/frame: 13277 px in 31 boxes, composite 10804 us, write 3385 us
+   stages us: bg 1174 ring 419 hands 3918 sec 4473 (4238 px) swap 661
+core 1: 59 fps, 14217 us/frame: 13808 px in 30 boxes, composite 10796 us, write 3307 us
+   stages us: bg 1228 ring 438 hands 3891 sec 4401 (4231 px) swap 686
+core 1: 59 fps, 13989 us/frame: 14216 px in 29 boxes, composite 10675 us, write 3200 us
+   stages us: bg 1153 ring 467 hands 3895 sec 4312 (4222 px) swap 704
+core 1: 59 fps, 13440 us/frame: 14047 px in 26 boxes, composite 10380 us, write 2947 us
+   stages us: bg 1146 ring 514 hands 3801 sec 4097 (4137 px) swap 694
+core 1: 60 fps, 13163 us/frame: 14164 px in 24 boxes, composite 10265 us, write 2784 us
+   stages us: bg 1138 ring 513 hands 3821 sec 3976 (4123 px) swap 697
+core 1: 60 fps, 12934 us/frame: 14350 px in 22 boxes, composite 10198 us, write 2621 us
+   stages us: bg 1061 ring 498 hands 3907 sec 3916 (4186 px) swap 705
+core 1: 60 fps, 12455 us/frame: 14101 px in 19 boxes, composite 9976 us, write 2365 us
+   stages us: bg 997 ring 514 hands 3902 sec 3776 (4194 px) swap 691
+core 1: 60 fps, 12091 us/frame: 13889 px in 16 boxes, composite 9834 us, write 2143 us
+   stages us: bg 935 ring 497 hands 3992 sec 3648 (4201 px) swap 679
+core 1: 59 fps, 11413 us/frame: 13457 px in 13 boxes, composite 9464 us, write 1835 us
+   stages us: bg 817 ring 457 hands 3980 sec 3488 (4252 px) swap 654
+core 1: 60 fps, 10656 us/frame: 12594 px in 10 boxes, composite 8989 us, write 1556 us
+   stages us: bg 750 ring 435 hands 3831 sec 3312 (4310 px) swap 608
+core 1: 60 fps, 10029 us/frame: 11845 px in 7 boxes, composite 8644 us, write 1275 us
+   stages us: bg 665 ring 395 hands 3782 sec 3198 (4668 px) swap 566
+core 1: 60 fps, 10186 us/frame: 11855 px in 6 boxes, composite 8802 us, write 1274 us
+   stages us: bg 670 ring 410 hands 3920 sec 3201 (4823 px) swap 566
+core 1: 60 fps, 10795 us/frame: 12293 px in 9 boxes, composite 9240 us, write 1445 us
+   stages us: bg 698 ring 433 hands 4232 sec 3237 (4360 px) swap 592
+core 1: 60 fps, 12367 us/frame: 13292 px in 12 boxes, composite 10461 us, write 1792 us
+   stages us: bg 797 ring 471 hands 5050 sec 3432 (4268 px) swap 646
+core 1: 60 fps, 13895 us/frame: 13556 px in 15 boxes, composite 11773 us, write 2008 us
+   stages us: bg 837 ring 480 hands 6185 sec 3532 (4205 px) swap 661
+core 1: 60 fps, 15841 us/frame: 14057 px in 18 boxes, composite 13404 us, write 2323 us
+   stages us: bg 919 ring 479 hands 7526 sec 3698 (4198 px) swap 688
+core 1: 64 fps, 15327 us/frame: 13230 px in 19 boxes, composite 12864 us, write 2355 us
+   stages us: bg 925 ring 465 hands 7173 sec 3554 (3925 px) swap 649
+core 1: 61 fps, 16637 us/frame: 14315 px in 23 boxes, composite 13751 us, write 2770 us
+   stages us: bg 1072 ring 504 hands 7422 sec 3929 (4190 px) swap 705
+core 1: 60 fps, 15665 us/frame: 14245 px in 26 boxes, composite 12599 us, write 2949 us
+   stages us: bg 1089 ring 503 hands 6138 sec 4036 (4205 px) swap 703
