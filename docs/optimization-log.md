@@ -177,6 +177,14 @@ from 18 KB too high: the top of core 0's heap overlapped the start of core
 1's code. It stayed hidden because core 0 barely uses its heap. The board
 config now reserves 0x4800 more on core 0.
 
+## 11. Bezel, measured properly
+
+A boot-time benchmark repaints the whole ring the way one bezel click does,
+with the lookup-table ring and the direct SPI path: **65,028 pixels in
+34.9 ms** (~128 cycles per pixel). One click needs that in under ~10 ms to
+fit a frame next to the second hand, so the lookup table alone is not enough.
+Parked for now (the face as it is refreshes well when the bezel is still).
+
 ## Concurrency and timing techniques used
 
 - AMP: one core per job, separate images, no shared scheduler.

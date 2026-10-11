@@ -27,6 +27,7 @@ was being turned show a large `ring` value.
 | 11-cache-verify-visible | same, only differences > 8 levels counted | 0 visible mismatches |
 | 12-ram-overlap-fix | core 0 RAM carve-out fixed | timing unchanged |
 | 13-cache-removed | cache removed, direct SPI kept | ~12 ms frames; dips only when turning the bezel or hands overlap |
+| 14-lut-bezel-full-ring-bench | LUT bezel + direct SPI, boot benchmark of one bezel click | whole ring (65k px) repainted in 34.9 ms: two frames too long |
 
 Captured with `tools/capture/cap.py <seconds>` (resets the board through the
 USB-serial DTR/RTS lines, then records).
