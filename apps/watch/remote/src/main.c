@@ -25,6 +25,7 @@
  */
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/display.h>
@@ -54,6 +55,7 @@ static uint16_t bufs[2][BAND * N] __aligned(4);
 static uint16_t *buf = bufs[0];
 static int cur;
 static bool fast_spi; /* after setup: our own register-level writes */
+static bool qf_overlap = true; /* boxes go out while the next is composed */
 
 /* ---- inputs from core 0 (written in the IPM interrupt) ------------------------- */
 
@@ -487,52 +489,6 @@ static inline uint16_t to565(const struct rgb *c)
 	return ((c->r & 0xf8) << 8) | ((c->g & 0xfc) << 3) | (c->b >> 3);
 }
 
-/* ---- hand cache -------------------------------------------------------------------
- * The GMT, hour and minute hands move at most once a second, but the second
- * hand passes over them every frame. So each hand keeps a copy of the finished
- * pixels (dial + ring + all three hands) inside its footprint: one span per
- * row, packed into a pool. Where the second hand uncovers a hand, the pixels
- * are copied back instead of recomputed.
- *
- * When a hand (or the date) changes, the area it touched is marked in the
- * "hand-dirty" bands: there, pixels are computed in full and written into
- * every cache whose span holds them. Everywhere else the caches stay valid.
- */
-#define HC_POOL 5600 /* worst footprint is ~5300 px (tools: all angles checked) */
-static int16_t hc_a[3][N], hc_b[3][N];
-static uint16_t hc_off[3][N];
-static uint16_t hc_pool[3][HC_POOL];
-static bool hc_fit[3];
-static bool cache_ready;
-static int16_t hd_x0[NBANDS], hd_x1[NBANDS]; /* hand-dirty x range per band */
-static bool marking_hands;
-
-/* Lay out hand k's cache spans for its current angle (pixels are filled by
- * the frame that draws the hand there, which marks it all hand-dirty).
- */
-static void hc_build(int k)
-{
-	const struct img_hand *hd = img_hands[k];
-	uint32_t off = 0;
-
-	hc_fit[k] = true;
-	for (int y = 0; y < N; y++) {
-		int a = 0, b = -1;
-
-		if (y >= hb_y0[k] && y <= hb_y1[k]) {
-			region_span(vh_regions[k], 4, hd->sn, hd->cs, y + 0.5f - CX, 0, N - 1, &a, &b);
-		}
-		if (b >= a && off + (b - a + 1) > HC_POOL) {
-			hc_fit[k] = false;
-			b = a - 1;
-		}
-		hc_a[k][y] = a;
-		hc_b[k][y] = b;
-		hc_off[k][y] = off;
-		off += b >= a ? b - a + 1 : 0;
-	}
-}
-
 static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 {
 	uint32_t pt0 = k_cycle_get_32();
@@ -597,17 +553,8 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 		}
 
 		ST(1, tt);
-		/* 3. hour, minute and GMT hands, drawn as vector shapes (see vhand_px),
-		 *    only where they changed; elsewhere copied from the hand cache
-		 */
-		const bool use_cache = cache_ready && hc_fit[0] && hc_fit[1] && hc_fit[2];
-		int hx0 = x0, hx1 = x1;
-
-		if (use_cache) {
-			hx0 = MAX(x0, hd_x0[y / BAND]);
-			hx1 = MIN(x1, hd_x1[y / BAND]);
-		}
-		for (int k = 0; k < 3 && hx1 >= hx0; k++) {
+		/* 3. hour, minute and GMT hands, drawn as vector shapes (see vhand_px) */
+		for (int k = 0; k < 3; k++) {
 			const struct vhand *vh = &vhands[k];
 			const struct img_hand *hd = img_hands[k];
 
@@ -620,7 +567,7 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 			int a, b;
 
 			ARG_UNUSED(vh);
-			region_span(vh_regions[k], 4, hd->sn, hd->cs, ry, hx0, hx1, &a, &b);
+			region_span(vh_regions[k], 4, hd->sn, hd->cs, ry, x0, x1, &a, &b);
 			if (b < a) {
 				continue;
 			}
@@ -635,26 +582,6 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 				}
 				hs += hd->sn;
 				hp += hd->cs;
-			}
-		}
-		for (int k = 0; k < 3 && use_cache; k++) {
-			int a = MAX(x0, hc_a[k][y]), b = MIN(x1, hc_b[k][y]);
-
-			if (b < a) {
-				continue;
-			}
-			uint16_t *pool = &hc_pool[k][hc_off[k][y] - hc_a[k][y]];
-			int c0 = MIN(b, hx0 - 1), c1 = MAX(a, hx1 + 1);
-			int w0 = MAX(a, hx0), w1 = MIN(b, hx1);
-
-			if (c0 >= a) { /* unchanged, left of the dirty range: copy */
-				memcpy(&o[a - x0], &pool[a], (c0 - a + 1) * 2);
-			}
-			if (b >= c1) { /* unchanged, right of it */
-				memcpy(&o[c1 - x0], &pool[c1], (b - c1 + 1) * 2);
-			}
-			if (w1 >= w0) { /* just recomputed: remember */
-				memcpy(&pool[w0], &o[w0 - x0], (w1 - w0 + 1) * 2);
 			}
 		}
 		ST(2, tt);
@@ -724,6 +651,9 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 
 	if (fast_spi) {
 		qf_write(x0, y0, w, h, buf); /* returns as soon as the DMA runs */
+		if (!qf_overlap) {
+			qf_wait();
+		}
 		cur ^= 1;
 		buf = bufs[cur]; /* its previous transfer finished in qf_write */
 	} else {
@@ -742,8 +672,8 @@ static int16_t band_x0[NBANDS], band_x1[NBANDS];
 static void bands_clear(void)
 {
 	for (int i = 0; i < NBANDS; i++) {
-		band_x0[i] = hd_x0[i] = N;
-		band_x1[i] = hd_x1[i] = -1;
+		band_x0[i] = N;
+		band_x1[i] = -1;
 	}
 }
 
@@ -754,10 +684,6 @@ static void mark_point(float x, float y, int r)
 	for (int b = b0; b <= b1; b++) {
 		band_x0[b] = MIN(band_x0[b], (int16_t)MAX(0, (int)(x - r)));
 		band_x1[b] = MAX(band_x1[b], (int16_t)MIN(N - 1, (int)(x + r)));
-		if (marking_hands) {
-			hd_x0[b] = MIN(hd_x0[b], (int16_t)MAX(0, (int)(x - r)));
-			hd_x1[b] = MAX(hd_x1[b], (int16_t)MIN(N - 1, (int)(x + r)));
-		}
 	}
 }
 
@@ -775,8 +701,6 @@ static void mark_rect(int x0, int y0, int x1, int y1)
 	for (int b = y0 / BAND; b <= y1 / BAND && b < NBANDS; b++) {
 		band_x0[b] = MIN(band_x0[b], x0);
 		band_x1[b] = MAX(band_x1[b], x1);
-		hd_x0[b] = MIN(hd_x0[b], x0); /* only the date uses this: under hands */
-		hd_x1[b] = MAX(hd_x1[b], x1);
 	}
 }
 
@@ -1026,11 +950,7 @@ int main(void)
 				sec_shown = sec_a;
 			}
 		}
-		/* the other hands only when they actually move (this also marks the
-		 * hand cache dirty there; the first pass draws and caches all three)
-		 */
-		cache_ready = true;
-		marking_hands = true;
+		/* the other hands only when they actually move */
 		for (int k = 0; k < 3; k++) {
 			struct img_hand *hd = img_hands[k];
 			int r = hd->w / 2 + 4;
@@ -1046,11 +966,9 @@ int main(void)
 			}
 			angle_sc(hd->ang, &hd->sn, &hd->cs);
 			hand_bbox(k);
-			hc_build(k);
 			mark_hand(hd->sn, hd->cs, tail, tip, r);
 			hd->shown = hd->ang;
 		}
-		marking_hands = false;
 		if (date_day != date_shown) {
 			mark_rect(WATCH_DATE_CX - WATCH_DATE_W / 2, WATCH_DATE_CY - WATCH_DATE_H / 2,
 				  WATCH_DATE_CX + WATCH_DATE_W / 2, WATCH_DATE_CY + WATCH_DATE_H / 2);
@@ -1086,7 +1004,12 @@ int main(void)
 					       .st_hands = k_cyc_to_us_floor32(st_c[2] / f),
 					       .st_sec = k_cyc_to_us_floor32(st_c[3] / f),
 					       .st_swap = k_cyc_to_us_floor32(st_c[4] / f),
-					       .sec_px = st_secpx / f};
+					       .sec_px = st_secpx / f,
+					       .underruns = qf_underruns, .overlap = qf_overlap};
+
+			qf_underruns = 0;
+
+			qf_underruns = 0;
 
 			ipm_send(ipm, 0, MSG_STATS, &st, sizeof(st));
 			frames = busy_us = max_us = 0;

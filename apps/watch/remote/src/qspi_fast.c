@@ -35,6 +35,7 @@
 static spi_dev_t *const hw = &GPSPI2;
 static const struct device *const dma = DEVICE_DT_GET(DT_NODELABEL(dma));
 static bool busy;
+uint32_t qf_underruns;
 
 void qf_wait(void)
 {
@@ -42,6 +43,10 @@ void qf_wait(void)
 		while (!spi_ll_usr_is_done(hw)) {
 		}
 		busy = false;
+		if (hw->dma_int_raw.outfifo_empty_err) {
+			qf_underruns++;
+			spi_ll_outfifo_empty_clr(hw);
+		}
 	}
 }
 

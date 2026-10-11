@@ -34,6 +34,8 @@ struct msg_stats {
 	uint32_t boxes;     /* average dirty boxes per frame */
 	uint32_t st_bg, st_ring, st_hands, st_sec, st_swap; /* us per frame, by stage */
 	uint32_t sec_px;    /* pixels the second-hand stage visited per frame */
+	uint32_t underruns; /* SPI transfers whose DMA FIFO ran dry (last second) */
+	uint32_t overlap;   /* 1: boxes sent while the next is composed */
 };
 
 struct msg_touch {

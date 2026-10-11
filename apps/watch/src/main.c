@@ -135,6 +135,7 @@ int main(void)
 			printk("   stages us: bg %u ring %u hands %u sec %u (%u px) swap %u\n",
 			       stats.st_bg, stats.st_ring, stats.st_hands, stats.st_sec, stats.sec_px,
 			       stats.st_swap);
+			printk("   spi: %u underruns, overlap %u\n", stats.underruns, stats.overlap);
 		} else {
 			printk("core 1: no stats\n");
 		}

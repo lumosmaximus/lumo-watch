@@ -14,3 +14,6 @@ void qf_write(int x, int y, int w, int h, const void *buf);
 
 /* Wait for the last transfer to finish. */
 void qf_wait(void);
+
+/* Transfers so far whose TX FIFO ran empty mid-transfer (corrupt pixels). */
+extern uint32_t qf_underruns;

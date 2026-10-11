@@ -25,6 +25,15 @@ endchoice
 config SYSTEM_WORKQUEUE_STACK_SIZE
 	default 2048
 
+# Zephyr workaround: with the simple-boot image format, soc/espressif/esp32s3/
+# memory.h takes core 0's top of RAM as 0x3fce9704 (shared buffers end), while
+# core 1 (MCUboot format) uses the IPC area start, 0x3fce5000. Core 0 then
+# carves out core 1's 128 KB from 18 KB too high, and its heap overlaps the
+# start of core 1's code. Reserve 0x4800 more so the regions are disjoint:
+# 0x3fce9704 - 0x10000 (IRAM) - 0x14800 = 0x3fcc4f04 < 0x3fcc5000.
+config ESP_APPCPU_DRAM_SIZE
+	default 0x14800 if ESP_SIMPLE_BOOT
+
 endif
 
 # Core 1 (APPCPU): the display. Its own image, with its own RAM carved out of
