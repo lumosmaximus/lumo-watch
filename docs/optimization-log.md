@@ -201,6 +201,36 @@ table. The per-row span solver just measures x relative to each hand's pivot.
 - Buttons: core 0 turns BOOT (a GPIO input event) and PWR (polled over I2C
   from the I/O expander, whose interrupt pin is not wired) into IPM messages.
 
+## 13. The bezel click, by the numbers
+
+A click (6 degree turn) repaints the whole ring: 65,028 pixels in boxes.
+
+| Step | Click | Notes |
+|---|---|---|
+| bilinear rotation (original) | 20-90 ms | per pixel: 4 taps from a 466x466 image |
+| polar LUT, radius-major strip in flash | 34.9 ms | |
+| same, angle-major, one u32 per entry | 37.0 ms | layout made no difference |
+
+Splitting that 37 ms by stage showed the lookup itself at 21.2 ms (~92 cycles
+per pixel): each ring pixel read the strip from flash at a position that,
+whichever way the strip is laid out, jumps around (along a row the angle and
+the radius both change, depending where on the ring the row is). Flash reads
+that miss the cache are the cost, so the strip had to move into internal RAM,
+and for that it had to shrink:
+
+- **8-bit palette:** the bezel has few colours; 256 entries cover them and
+  their anti-aliased mixes. Strip 248 KB -> 62 KB.
+- **Pre-blended:** the ring's soft edges are blended in the generator onto
+  what is beneath them (grey rehaut inside, black outside), so every entry is
+  opaque: no blending and no dial copy under the ring.
+- **u16 index per ring pixel** (113 KB, stays in flash, read sequentially).
+- **Sweep stage gated** by the hand's bounding box: ring boxes the hand
+  cannot reach skip it (3.7 ms -> 0.4 ms in a click).
+- **Off-panel corners** of ring boxes are zero-filled instead of copied.
+
+Result: **14.0 ms** per click (ring 5.6, swap 3.1, bg 1.5, write mostly
+overlapped). Core 1's RAM is now 93% used.
+
 ## Concurrency and timing techniques used
 
 - AMP: one core per job, separate images, no shared scheduler.

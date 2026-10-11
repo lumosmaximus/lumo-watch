@@ -320,9 +320,11 @@ def export(out):
         data += bytes((v & 0xFF, v >> 8))
     src.append(c_array("watch_dial", data))
 
-    # Bezel as a polar lookup: an unwrapped strip (radius-major: RAD rows of
-    # ANG angles) plus, for every ring pixel, its angle and radius index.
-    # Turning the bezel by k steps is then just "angle - k" per pixel.
+    # Bezel as a polar lookup: an unwrapped strip, angle-major ([ANG][RAD],
+    # one u32 per entry: RGB565 | alpha << 16), plus for every ring pixel its
+    # strip index angle * RAD + radius. Turning the bezel by k angle steps is
+    # then "index - k * RAD" (wrapping), and pixels next to each other on a
+    # screen row read strip entries next to each other in flash.
     ANG, R0 = 1440, BEZEL_IN - 2          # 0.25 degree steps; first radius
     RAD = BEZEL_OUT - R0 + 1
     big = Image.new("RGBA", (SIZE * SS, SIZE * SS), (0, 0, 0, 0))
@@ -346,7 +348,7 @@ def export(out):
             return 0, 0, 0, 0
         return (acc[0] / acc[3], acc[1] / acc[3], acc[2] / acc[3], acc[3])
 
-    strip_rgb, strip_a = bytearray(), bytearray()
+    strip = [[0] * RAD for _ in range(ANG)]
     for ri in range(RAD):
         r = R0 + ri + 0.5
         for ai in range(ANG):
@@ -366,18 +368,32 @@ def export(out):
                 cr, cg, cb = acc[0] / acc[3], acc[1] / acc[3], acc[2] / acc[3]
             else:
                 cr = cg = cb = 0
-            v = rgb565(int(cr), int(cg), int(cb))
-            strip_rgb += bytes((v & 0xFF, v >> 8))
-            strip_a.append(int(round(a * 255)))
-    src.append(c_array("watch_ring_rgb", strip_rgb))
-    src.append(c_array("watch_ring_a", strip_a))
+            # pre-blend onto what lies beneath (grey rehaut inside BEZEL_IN,
+            # black outside), so every strip entry is opaque
+            under = (52, 52, 56) if r < BEZEL_IN else (0, 0, 0)
+            strip[ai][ri] = tuple(int(round(c * a + u * (1 - a)))
+                                  for c, u in zip((cr, cg, cb), under))
+    # 8-bit palette (the bezel has few colours): the strip is small enough for
+    # core 1 to keep in internal RAM, where random reads are cheap
+    simg = Image.new("RGB", (RAD, ANG))
+    simg.putdata([strip[ai][ri] for ai in range(ANG) for ri in range(RAD)])
+    q = simg.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    pal = q.getpalette()[:256 * 3]
+    pal += [0] * (256 * 3 - len(pal))
+    pal_b = bytearray()
+    for i in range(256):
+        v = rgb565(*pal[i * 3:i * 3 + 3])
+        pal_b += bytes((v & 0xFF, v >> 8))
+    src.append(c_array("watch_ring_pal", pal_b))
+    strip_b = bytes(q.getdata())  # [ANG][RAD], one palette index each
+    src.append(c_array("watch_ring_q", strip_b))
 
     # ring pixels, row by row: up to two spans per row (left/right of the dial)
-    lut_ang, lut_rad = bytearray(), bytearray()
+    lut_idx = bytearray()
     row_off, spans = [], []
     rmin2, rmax2 = R0 ** 2, (BEZEL_OUT + 0.5) ** 2
     for y in range(SIZE):
-        row_off.append(len(lut_rad))
+        row_off.append(len(lut_idx) // 2)
         xs = [x for x in range(SIZE)
               if rmin2 <= (x + 0.5 - C) ** 2 + (y + 0.5 - C) ** 2 < rmax2]
         sp = []
@@ -393,10 +409,8 @@ def export(out):
                 dx, dy = x + 0.5 - C, y + 0.5 - C
                 ai = int(round((math.degrees(math.atan2(dx, -dy)) % 360) * ANG / 360)) % ANG
                 ri = min(RAD - 1, max(0, int(math.hypot(dx, dy) - R0)))
-                lut_ang += bytes((ai & 0xFF, ai >> 8))
-                lut_rad.append(ri)
-    src.append(c_array("watch_ring_ang", lut_ang))
-    src.append(c_array("watch_ring_rad", lut_rad))
+                lut_idx += (ai * RAD + ri).to_bytes(2, "little")
+    src.append(c_array("watch_ring_idx", lut_idx))
     offs = bytearray()
     for o in row_off:
         offs += o.to_bytes(4, "little")
@@ -409,13 +423,12 @@ def export(out):
     hdr += ["", "/* bezel ring lookup (see export()) */",
             f"#define WATCH_RING_ANG {ANG}", f"#define WATCH_RING_RAD {RAD}",
             f"#define WATCH_RING_R0 {R0}",
-            "extern const uint8_t watch_ring_rgb[];     /* RGB565 [RAD][ANG] */",
-            "extern const uint8_t watch_ring_a[];       /* A8 [RAD][ANG] */",
-            "extern const uint8_t watch_ring_ang[];     /* u16 per ring pixel */",
-            "extern const uint8_t watch_ring_rad[];     /* u8 per ring pixel */",
+            "extern const uint8_t watch_ring_pal[];     /* 256 x RGB565 */",
+            "extern const uint8_t watch_ring_q[];       /* u8 [ANG][RAD]: palette index */",
+            "extern const uint8_t watch_ring_idx[];     /* u16 per ring pixel: strip index */",
             "extern const uint8_t watch_ring_row_off[]; /* u32 per row: first pixel */",
             "extern const uint8_t watch_ring_spans[];   /* 2 x (i16 x0, i16 x1) per row */"]
-    print(f"ring: strip {len(strip_rgb) + len(strip_a)} B, lut {len(lut_ang) + len(lut_rad)} B")
+    print(f"ring: strip {len(strip_b)} B, lut {len(lut_idx)} B")
 
     dates = bytearray()
     for img in date_images():

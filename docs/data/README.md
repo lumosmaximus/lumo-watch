@@ -30,6 +30,10 @@ was being turned show a large `ring` value.
 | 14-lut-bezel-full-ring-bench | LUT bezel + direct SPI, boot benchmark of one bezel click | whole ring (65k px) repainted in 34.9 ms: two frames too long |
 | 15-faces-refactor-gmt | two-face compositor (generic hands with pivots), GMT face | 59 fps, sweep stage ~0.5 ms slower than before |
 | 16-chronograph-running | chronograph face (test build started on it, chrono running) | solid 60 fps, ~10.5 ms frames |
+| 17-bezel-angle-major-u32 | LUT ring, angle-major packed u32 strip in flash | click 37.0 ms: no better than radius-major |
+| 18-bezel-click-stage-split | same, click split by stage | ring 21.2, bg 5.8, sweep 3.7, swap 3.1, write 2.2 ms |
+| 19-bezel-palette-in-ram | 8-bit palette strip in internal RAM, pre-blended (opaque), no dial copy under the ring, sweep stage gated by bbox | click 15.0 ms (ring 5.6) |
+| 20-bezel-zero-fill | off-panel corners of ring boxes zero-filled | click 14.0 ms |
 
 Captured with `tools/capture/cap.py <seconds>` (resets the board through the
 USB-serial DTR/RTS lines, then records).

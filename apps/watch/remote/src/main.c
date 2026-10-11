@@ -112,7 +112,15 @@ static int32_t sec_shown; /* the first frame draws it at 12 */
 
 #define BEZEL_STEP 60     /* 6 degrees = one minute on the dial */
 static int32_t bezel_rot, bezel_shown = -1;
-static float bez_sn, bez_cs;
+/* bezel turn as an offset into the ring strip: angle steps x WATCH_RING_RAD */
+static int32_t ring_shift;
+/* the ring strip (palette indices) and palette, copied to internal RAM at boot:
+ * a bezel click reads the strip all over, and random flash reads miss the cache
+ */
+static uint8_t ring_q[WATCH_RING_ANG * WATCH_RING_RAD];
+static uint16_t ring_pal[256];
+/* sweep hand's screen bounding box at its current angle */
+static int16_t swb_x0, swb_y0, swb_x1, swb_y1;
 
 static int date_day, date_shown;
 
@@ -171,47 +179,6 @@ static ALWAYS_INLINE float fmn(float a, float b)
 static ALWAYS_INLINE float disc(float d2, float r, float k)
 {
 	return clamp01((r * r + r + 0.25f - d2) * k);
-}
-
-/* Bilinear sample of the bezel ring (RGB565 + A8 planes) at image coords. */
-static ALWAYS_INLINE void bezel_px(float u, float v, struct rgb *d)
-{
-	const uint16_t *rgbp = (const uint16_t *)watch_bezel;
-	const uint8_t *ap = watch_bezel + N * N * 2;
-
-	u -= 0.5f;
-	v -= 0.5f;
-	int x0 = ifloor(u), y0 = ifloor(v);
-
-	if (x0 < 0 || y0 < 0 || x0 >= N - 1 || y0 >= N - 1) {
-		return;
-	}
-	int fx = (int)((u - x0) * 256), fy = (int)((v - y0) * 256);
-	int wts[4] = {(256 - fx) * (256 - fy), fx * (256 - fy), (256 - fx) * fy, fx * fy};
-	int pr = 0, pg = 0, pb = 0, pa = 0;
-
-	for (int k = 0; k < 4; k++) {
-		int i = (y0 + (k >> 1)) * N + x0 + (k & 1);
-		int a = (ap[i] * wts[k]) >> 8;
-
-		if (!a) {
-			continue;
-		}
-		struct rgb c = from565(rgbp[i]);
-
-		pa += a;
-		pr += c.r * a;
-		pg += c.g * a;
-		pb += c.b * a;
-	}
-	if (pa == 0) {
-		return;
-	}
-	int ia = 65536 - pa;
-
-	d->r = (pr + d->r * ia) >> 16;
-	d->g = (pg + d->g * ia) >> 16;
-	d->b = (pb + d->b * ia) >> 16;
 }
 
 /* Second hand coverage at (s along the hand, p across it). Returns alpha of
@@ -427,6 +394,19 @@ static uint32_t st_c[5], st_secpx;
 /* Screen-space bounding boxes of the image hands at their current angle. */
 static int16_t hb_x0[MAXH], hb_y0[MAXH], hb_x1[MAXH], hb_y1[MAXH];
 
+/* Sweep hand's bounding box (pivot at the centre), widest part plus shadow. */
+static void sweep_bbox(void)
+{
+	float r = sw.mr + 2;
+	float xa = sw.tail * sec_sn, xb = sw.tip * sec_sn;
+	float ya = -sw.tail * sec_cs, yb = -sw.tip * sec_cs;
+
+	swb_x0 = (int16_t)(CX + fmn(xa, xb) - r);
+	swb_x1 = (int16_t)(CX + fmx(xa, xb) + r);
+	swb_y0 = (int16_t)(CX + fmn(ya, yb) - r);
+	swb_y1 = (int16_t)(CX + fmx(ya, yb) + r);
+}
+
 static void hand_bbox(int k)
 {
 	const struct hand *hd = &hands[k];
@@ -512,6 +492,7 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 	float fxm = fmx(fabsf(x0 - CX), fabsf(x1 + 1 - CX)), fym = fmx(fabsf(y0 - CX), fabsf(y1 + 1 - CX));
 	bool ring = gmt_face &&
 		    fxm * fxm + fym * fym > (WATCH_BEZEL_IN - 1) * (WATCH_BEZEL_IN - 1);
+	const bool sweep_on = swb_x1 >= x0 && swb_x0 <= x1 && swb_y1 >= y0 && swb_y0 <= y1;
 	/* plain-shaft stretch of the sweep hand ends at its lume dot, if any */
 	const float d0 = sw.dot ? sw.dot : sw.tip + 10;
 
@@ -525,8 +506,37 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 		const float ry = y + 0.5f - CX;
 		uint32_t tt = k_cycle_get_32();
 
-		/* 1. background: the dial (or the date window), straight copy */
-		memcpy(o, &drow[x0], w * 2);
+		/* 1. background: the dial (or the date window), straight copy; not
+		 *    under the bezel ring, which covers it completely
+		 */
+		if (ring) {
+			/* outside the outermost span is off the round panel: black */
+			const int16_t *sp = (const int16_t *)watch_ring_spans + y * 4;
+			int nsp = (sp[1] >= sp[0]) + (sp[3] >= sp[2]);
+			int lo = nsp ? sp[0] : N, hi = nsp ? sp[nsp * 2 - 1] : -1;
+			int x = x0;
+
+			if (x < lo) {
+				int e = MIN(x1, lo - 1);
+
+				memset(&o[0], 0, (e - x0 + 1) * 2);
+				x = e + 1;
+			}
+			if (nsp == 2 && x <= x1) { /* between the spans: the dial */
+				int a = MAX(x, sp[1] + 1), b = MIN(x1, sp[2] - 1);
+
+				if (b >= a) {
+					memcpy(&o[a - x0], &drow[a], (b - a + 1) * 2);
+				}
+			}
+			if (hi < x1) {
+				int a = MAX(x0, hi + 1);
+
+				memset(&o[a - x0], 0, (x1 - a + 1) * 2);
+			}
+		} else {
+			memcpy(o, &drow[x0], w * 2);
+		}
 		if (date && y >= dy0 && y < dy0 + WATCH_DATE_H && x1 >= dx0 &&
 		    x0 < dx0 + WATCH_DATE_W) {
 			int a = MAX(x0, dx0), b = MIN(x1, dx0 + WATCH_DATE_W - 1);
@@ -535,33 +545,37 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 		}
 
 		ST(0, tt);
-		/* 2. bezel ring: only its spans in this row */
-		const float ro = WATCH_BEZEL_OUT, ri = WATCH_BEZEL_IN - 1;
+		/* 2. bezel ring via the polar lookup: each ring pixel has a precomputed
+		 *    index into the unwrapped ring strip (angle-major, so neighbours
+		 *    on a row read neighbouring entries); turning the bezel just
+		 *    offsets the index
+		 */
+		if (ring) {
+			const int16_t *sp = (const int16_t *)watch_ring_spans + y * 4;
+			uint32_t idx = ((const uint32_t *)watch_ring_row_off)[y];
+			const uint16_t *lut = (const uint16_t *)watch_ring_idx;
+			const int32_t total = WATCH_RING_ANG * WATCH_RING_RAD;
 
-		if (ring && fabsf(ry) < ro) {
-			float ho = sqrtf(ro * ro - ry * ry);
-			float hi = fabsf(ry) < ri ? sqrtf(ri * ri - ry * ry) : 0;
-			int spans[2][2] = {{(int)(CX - ho - 1), (int)(CX - hi + 1)},
-					   {(int)(CX + hi - 1), (int)(CX + ho + 1)}};
-			int nsp = hi > 0 ? 2 : 1;
+			for (int k = 0; k < 2; k++, sp += 2) {
+				int sa = sp[0], sb = sp[1];
 
-			if (nsp == 1) {
-				spans[0][1] = spans[1][1];
-			}
-			for (int sp = 0; sp < nsp; sp++) {
-				int a = MAX(x0, spans[sp][0]), b = MIN(x1, spans[sp][1]);
-				float rx = a + 0.5f - CX;
-				float bu = CX + rx * bez_cs + ry * bez_sn;
-				float bv = CX - rx * bez_sn + ry * bez_cs;
-
-				for (int x = a; x <= b; x++) {
-					struct rgb c = from565(o[x - x0]);
-
-					bezel_px(bu, bv, &c);
-					o[x - x0] = to565(&c);
-					bu += bez_cs;
-					bv -= bez_sn;
+				if (sb < sa) {
+					continue;
 				}
+				int a = MAX(x0, sa), b = MIN(x1, sb);
+				const uint16_t *li = &lut[idx + (a - sa)];
+				uint16_t *op = &o[a - x0];
+
+				/* entries are pre-blended onto what is beneath: plain copy */
+				for (int x = a; x <= b; x++) {
+					int32_t t = (int32_t)*li++ - ring_shift;
+
+					if (t < 0) {
+						t += total;
+					}
+					*op++ = ring_pal[ring_q[t]];
+				}
+				idx += sb - sa + 1;
 			}
 		}
 
@@ -601,9 +615,11 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 		/* 4. second hand + shadow: solve where they cross this row
 		 *    p (across) = X cs + ry sn, s (along) = X sn - ry cs, X = x + 0.5 - CX
 		 */
-		int a, b;
+		int a = 1, b = 0;
 
-		region_span(sweep_rg, 4, sec_sn, sec_cs, ry, x0, x1, &a, &b, CX);
+		if (sweep_on && y >= swb_y0 && y <= swb_y1) {
+			region_span(sweep_rg, 4, sec_sn, sec_cs, ry, x0, x1, &a, &b, CX);
+		}
 		float rx = a + 0.5f - CX;
 		float ss = rx * sec_sn - ry * sec_cs, sp = rx * sec_cs + ry * sec_sn;
 		/* shadow sample point: 2.5 px left, 3 px up */
@@ -946,8 +962,9 @@ static void draw_full(void)
 		hands[k].shown = hands[k].ang;
 	}
 	angle_sc(sa, &sec_sn, &sec_cs);
+	sweep_bbox();
 	sec_shown = sa;
-	angle_sc(bezel_rot, &bez_sn, &bez_cs);
+	ring_shift = bezel_rot * WATCH_RING_ANG / 3600 * WATCH_RING_RAD;
 	bezel_shown = bezel_rot;
 	date_day = base_ms >= 0 ? base.day : 0;
 	date_shown = date_day;
@@ -963,6 +980,29 @@ K_MSGQ_DEFINE(buttons, sizeof(uint8_t), 8, 1);
 
 #define PICK_R  104 /* thumbnail radius */
 static const int pick_cx[NFACES] = {117, 349};
+
+/* Bezel colour at (x, y) at the current turn, or bg if not on the ring. */
+static uint16_t ring_at(int x, int y, uint16_t bg)
+{
+	const int16_t *sp = (const int16_t *)watch_ring_spans + y * 4;
+	uint32_t idx = ((const uint32_t *)watch_ring_row_off)[y];
+
+	for (int k = 0; k < 2; k++, sp += 2) {
+		if (x >= sp[0] && x <= sp[1]) {
+			int32_t t = (int32_t)((const uint16_t *)watch_ring_idx)[idx + x - sp[0]] -
+				    ring_shift;
+
+			if (t < 0) {
+				t += WATCH_RING_ANG * WATCH_RING_RAD;
+			}
+			return ring_pal[ring_q[t]];
+		}
+		if (sp[1] >= sp[0]) {
+			idx += sp[1] - sp[0] + 1;
+		}
+	}
+	return bg;
+}
 
 /* Both faces as round thumbnails side by side, the selected one ringed. */
 static void draw_picker(int sel)
@@ -988,6 +1028,9 @@ static void draw_picker(int sel)
 						int sx = (int)CX + dx * k / 256, sy = (int)CX + dy * k / 256;
 
 						v = dials[f][sy * N + sx];
+						if (f == FACE_GMT) {
+							v = ring_at(sx, sy, v);
+						}
 					} else if (f == sel && d2 < (PICK_R + 6) * (PICK_R + 6) &&
 						   d2 >= (PICK_R + 2) * (PICK_R + 2)) {
 						v = 0xffff;
@@ -1064,6 +1107,8 @@ static void handle_buttons(void)
 
 int main(void)
 {
+	memcpy(ring_q, watch_ring_q, sizeof(ring_q));
+	memcpy(ring_pal, watch_ring_pal, sizeof(ring_pal));
 	ipm_register_callback(ipm, on_ipm, NULL);
 	ipm_set_enabled(ipm, 1);
 	if (!device_is_ready(disp)) {
@@ -1078,7 +1123,7 @@ int main(void)
 	/* micro-benchmark: where does a composited pixel's time go? */
 	{
 		const uint16_t *dial = (const uint16_t *)watch_dial;
-		struct msg_bench mb;
+		struct msg_bench mb = {0};
 		volatile uint32_t sink = 0;
 		uint32_t t0, acc = 0;
 
@@ -1131,6 +1176,34 @@ int main(void)
 	bool have_te = detect_te();
 
 	fast_spi = true; /* the Zephyr driver has set SPI2 + GDMA up; take over */
+	/* the cost of one bezel click: the whole ring, as the loop does it */
+	{
+		struct msg_bench rb = {0};
+
+		for (int i = 1; i <= 3; i++) {
+			uint32_t px0 = prof_px, c0 = k_cycle_get_32(), w0 = prof_write;
+			uint32_t s0[5];
+
+			memcpy(s0, st_c, sizeof(s0));
+			ring_shift = i * (WATCH_RING_ANG / 60) * WATCH_RING_RAD;
+			render_ring();
+			qf_wait();
+			rb.ring_full_us = k_cyc_to_us_floor32(k_cycle_get_32() - c0);
+			rb.ring_px = prof_px - px0;
+			/* stage split, us: bg, ring, hands, sweep, swap; then write */
+			rb.seq_read = k_cyc_to_us_floor32(st_c[0] - s0[0]);
+			rb.band_read = k_cyc_to_us_floor32(st_c[1] - s0[1]);
+			rb.compute = k_cyc_to_us_floor32(st_c[2] - s0[2]);
+			rb.internal_read = k_cyc_to_us_floor32(st_c[3] - s0[3]);
+			rb.box_plain = k_cyc_to_us_floor32(st_c[4] - s0[4]);
+			rb.box_hands = k_cyc_to_us_floor32(prof_write - w0);
+		}
+		ring_shift = 0;
+		render_ring();
+		qf_wait();
+		k_msleep(600);
+		ipm_send(ipm, -1, MSG_BENCH, &rb, sizeof(rb));
+	}
 	uint32_t frames = 0, busy_us = 0, last_stats = k_uptime_get_32(), max_us = 0;
 
 	while (1) {
@@ -1152,6 +1225,7 @@ int main(void)
 		if (sec_a != sec_shown) {
 			mark_hand(CX, CX, sec_sn, sec_cs, sw.tail, sw.tip, sw.mr);
 			angle_sc(sec_a, &sec_sn, &sec_cs);
+			sweep_bbox();
 			mark_hand(CX, CX, sec_sn, sec_cs, sw.tail, sw.tip, sw.mr);
 			sec_shown = sec_a;
 		}
@@ -1176,7 +1250,7 @@ int main(void)
 		bool ring = face == FACE_GMT && bezel_rot != bezel_shown;
 
 		if (ring) {
-			angle_sc(bezel_rot, &bez_sn, &bez_cs);
+			ring_shift = bezel_rot * WATCH_RING_ANG / 3600 * WATCH_RING_RAD;
 			bezel_shown = bezel_rot;
 		}
 

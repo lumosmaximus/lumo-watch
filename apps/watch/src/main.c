@@ -37,6 +37,13 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 		struct msg_bench mb;
 
 		memcpy(&mb, (const void *)data, sizeof(mb));
+		if (mb.ring_full_us) {
+			printk("core 1 bench: full bezel repaint %u us (%u px): bg %u ring %u hands %u"
+			       " sweep %u swap %u write %u us\n", mb.ring_full_us, mb.ring_px,
+			       mb.seq_read, mb.band_read, mb.compute, mb.internal_read,
+			       mb.box_plain, mb.box_hands);
+			return;
+		}
 		printk("core 1 bench (CPU cycles per pixel): flash sequential %u.%u, flash band "
 		       "pattern %u.%u, internal RAM %u.%u, second-hand maths %u.%u\n",
 		       mb.seq_read / 10, mb.seq_read % 10, mb.band_read / 10, mb.band_read % 10,

@@ -28,6 +28,8 @@ struct msg_button {
 
 struct msg_bench {
 	uint32_t seq_read, band_read, compute, internal_read, box_plain, box_hands;
+	uint32_t ring_full_us; /* whole bezel ring repainted (one click), us */
+	uint32_t ring_px;      /* pixels in that repaint */
 };
 
 struct msg_time {

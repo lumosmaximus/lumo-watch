@@ -9,22 +9,16 @@
 #define WATCH_BEZEL_OUT 233
 
 extern const uint8_t watch_dial[];   /* RGB565 */
-extern const uint8_t watch_bezel[];  /* RGB565 + A8 */
-extern const uint8_t watch_gmt[];  /* ARGB8888 */
-#define WATCH_GMT_W 44
-#define WATCH_GMT_H 204
-#define WATCH_GMT_PIVOT_X 20
-#define WATCH_GMT_PIVOT_Y 180
-extern const uint8_t watch_hour[];  /* ARGB8888 */
-#define WATCH_HOUR_W 52
-#define WATCH_HOUR_H 144
-#define WATCH_HOUR_PIVOT_X 24
-#define WATCH_HOUR_PIVOT_Y 120
-extern const uint8_t watch_minute[];  /* ARGB8888 */
-#define WATCH_MINUTE_W 38
-#define WATCH_MINUTE_H 204
-#define WATCH_MINUTE_PIVOT_X 17
-#define WATCH_MINUTE_PIVOT_Y 180
+
+/* bezel ring lookup (see export()) */
+#define WATCH_RING_ANG 1440
+#define WATCH_RING_RAD 43
+#define WATCH_RING_R0 191
+extern const uint8_t watch_ring_pal[];     /* 256 x RGB565 */
+extern const uint8_t watch_ring_q[];       /* u8 [ANG][RAD]: palette index */
+extern const uint8_t watch_ring_idx[];     /* u16 per ring pixel: strip index */
+extern const uint8_t watch_ring_row_off[]; /* u32 per row: first pixel */
+extern const uint8_t watch_ring_spans[];   /* 2 x (i16 x0, i16 x1) per row */
 
 extern const uint8_t watch_dates[]; /* 31 x RGB565, day 1 first */
 #define WATCH_DATE_W 44
