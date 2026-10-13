@@ -151,6 +151,15 @@ static void on_input(struct input_event *evt, void *user_data)
 			hold_sent = hold_two = false;
 		}
 		ipm_send(ipm, -1, MSG_TOUCH, &t, sizeof(t));
+		/* log touches (down/up and finger-count changes) */
+		static uint8_t last_down, last_fingers;
+
+		if (t.down != last_down || t.fingers != last_fingers) {
+			printk("touch %s %u,%u fingers %u\n", t.down ? "down" : "up", t.x, t.y,
+			       t.fingers);
+			last_down = t.down;
+			last_fingers = t.fingers;
+		}
 	}
 }
 INPUT_CALLBACK_DEFINE(NULL, on_input, NULL);
@@ -235,7 +244,7 @@ static void console_rx(void *a, void *b, void *c)
 			printk("rebooting to download mode\n");
 			usb_reboot_to_download();
 		}
-		if (line[0] == 'K' && line[1] >= '1' && line[1] <= '6') { /* test: send a key */
+		if (line[0] == 'K' && line[1] >= '1' && line[1] <= '8') { /* test: send a key */
 			usb_key(line[1] - '0');
 			printk("key %c sent\n", line[1]);
 			continue;

@@ -9,7 +9,7 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(watch_remote)
 
 target_sources(app PRIVATE src/main.c src/qspi_fast.c)
-target_sources(app PRIVATE src/watch_img.c src/speed_img.c)
+target_sources(app PRIVATE src/watch_img.c src/speed_img.c src/knob_img.c)
 
 
 # Per-pixel maths: let sqrtf inline to the FPU sequence (no errno handling).

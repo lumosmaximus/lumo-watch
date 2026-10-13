@@ -19,6 +19,7 @@
 
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/usb/usbd.h>
 #include <zephyr/usb/class/usbd_hid.h>
@@ -56,6 +57,8 @@ static const struct {
 	[KEY_PLAY_PAUSE] = {0x00CD},
 	[KEY_BRIGHT_UP] = {0x006F},
 	[KEY_BRIGHT_DOWN] = {0x0070},
+	[KEY_NEXT] = {0x00B5}, /* Scan Next Track */
+	[KEY_PREV] = {0x00B6}, /* Scan Previous Track */
 };
 
 static const struct device *const hid_dev = DEVICE_DT_GET(DT_NODELABEL(hid_media));
@@ -109,6 +112,8 @@ static void key_thread(void *a, void *b, void *c)
 			continue;
 		}
 		uint16_t u = keymap[k].consumer;
+
+		printk("hid key %u (usage 0x%02x)%s\n", k, u, hid_ready ? "" : " - host not ready");
 		const uint8_t press[] = {REPORT_CONSUMER, u & 0xff, u >> 8};
 		const uint8_t release[] = {REPORT_CONSUMER, 0, 0};
 

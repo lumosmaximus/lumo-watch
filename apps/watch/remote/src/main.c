@@ -41,6 +41,7 @@
 #include "../../common/watch_msg.h"
 #include "watch_img.h"
 #include "speed_img.h"
+#include "knob_img.h"
 #include "qspi_fast.h"
 
 #define N      WATCH_SIZE
@@ -130,7 +131,6 @@ static int32_t ring_shift;
  */
 static uint8_t ring_q[WATCH_RING_ANG * WATCH_RING_RAD];
 static uint16_t ring_pal[256];
-static uint16_t ring_pal_amber[256]; /* the knob in brightness mode */
 static const uint16_t *ring_palp = ring_pal;
 /* sweep hand's screen bounding box at its current angle */
 static int16_t swb_x0, swb_y0, swb_x1, swb_y1;
@@ -1012,6 +1012,8 @@ static int64_t day_ms_now(void)
 	       (24LL * 3600 * 1000);
 }
 
+static int32_t rm_steps(void);
+
 /* Redraw the whole screen with every hand at its current angle. */
 static void draw_full(void)
 {
@@ -1026,7 +1028,11 @@ static void draw_full(void)
 	angle_sc(sa, &sec_sn, &sec_cs);
 	sweep_bbox();
 	sec_shown = sa;
-	ring_shift = bezel_rot * WATCH_RING_ANG / 3600 * WATCH_RING_RAD;
+	if (face == FACE_REMOTE) {
+		ring_shift = rm_steps() * WATCH_RING_RAD;
+	} else {
+		ring_shift = bezel_rot * WATCH_RING_ANG / 3600 * WATCH_RING_RAD;
+	}
 	bezel_shown = bezel_rot;
 	date_day = base_ms >= 0 ? base.day : 0;
 	date_shown = date_day;
@@ -1037,70 +1043,185 @@ static void draw_full(void)
 }
 
 /* ---- the media remote --------------------------------------------------------------
- * The GMT bezel becomes a knob: each 6 degree click sends one volume step
- * (clockwise up) to the computer through core 0's USB HID. Centre: play/pause.
- * Sun button below: the knob switches to brightness (its palette turns amber)
- * until the button is pressed again or nothing touches it for 30 s.
- * Open/close: hold two fingers (or one, still, in the middle); PWR also plays/
- * pauses, BOOT also switches the mode.
+ * A knob ring (tools/watchface/knob.py, drawn with the bezel's lookup) follows
+ * the finger in 0.25 degree steps and sends one key per 15 degrees (its long
+ * ticks), so like an iPod wheel it takes a couple of turns from silent to full. Clockwise is up. Buttons:
+ * mute (top), previous / next (left / right), play/pause (centre) and a sun
+ * (bottom) that switches the knob to brightness (amber) until pressed again or
+ * 30 s without touch. Open/close: hold two fingers (or one, still, in the
+ * middle). PWR plays/pauses, BOOT switches the mode.
  */
 
-#define RM_BTN_R   56   /* play/pause button radius */
-#define RM_SUN_Y   118  /* brightness button: centre below the middle */
-#define RM_SUN_R   30
-#define RM_IDLE_MS 30000
+#define RM_IDLE_MS  30000
 
-static bool rm_bright, rm_pressed, rm_active, rm_drag, rm_moved;
+enum { RB_PLAY, RB_MUTE, RB_PREV, RB_NEXT, RB_SUN, RB_N };
+static const struct {
+	int16_t x, y, r;
+	uint8_t key;
+} rm_btn[RB_N] = {
+	[RB_PLAY] = {0, 0, 50, KEY_PLAY_PAUSE},
+	[RB_MUTE] = {0, -104, 28, KEY_MUTE},
+	[RB_PREV] = {-104, 0, 28, KEY_PREV},
+	[RB_NEXT] = {104, 0, 28, KEY_NEXT},
+	[RB_SUN] = {0, 104, 28, 0},
+};
+
+static uint16_t knob_pal[256], knob_pal_amber[256];
+static bool rm_bright, rm_active, rm_drag, rm_moved;
+static bool rm_muted; /* our own idea: mute toggles it, a volume key clears it */
+static float rm_pos;  /* knob angle, 0.1 degree, unwrapped */
+static int rm_pressed = -1;
 static int64_t rm_last_touch, rm_t0, rm_press_until;
-static int32_t rm_clicks, rm_last_ang, rm_saved_bezel;
+static int32_t rm_last_ang, rm_saved_bezel;
 static float rm_acc;
 static int rm_x0, rm_y0, rm_prev_face = BOOT_FACE;
 
-/* One pixel of the remote's centre (pixel-centre coords relative to the middle). */
-static uint16_t remote_px(float X, float Y)
+/* icon coverage (white) for button b, at (X, Y) relative to its centre */
+static float rm_icon(int b, float X, float Y)
 {
-	struct rgb c = {14, 14, 16};
-	float d2 = X * X + Y * Y;
-	float a = disc(d2, RM_BTN_R, 1.0f / (2 * RM_BTN_R + 1));
+	switch (b) {
+	case RB_PLAY:
+		return fmx(tri(X, Y, -22, -3, 14), fmx(bar(X, Y, 4, 10, 14), bar(X, Y, 14, 20, 14)));
+	case RB_PREV: /* |<< */
+		return fmx(bar(X, Y, -12, -9.5f, 8), fmx(tri(-X, Y, -1, 9, 8), tri(-X, Y, -11, -1, 8)));
+	case RB_NEXT: /* >>| */
+		return fmx(bar(X, Y, 9.5f, 12, 8), fmx(tri(X, Y, -1, 9, 8), tri(X, Y, -11, -1, 8)));
+	case RB_MUTE: { /* speaker with a cross */
+		float body = bar(X, Y, -13, -7, 4.5f);
+		float hw = 4.5f + (X + 7) * 0.9f; /* cone widens to the right */
+		float cone = (X > -7.5f && X < 1.5f) ? clamp01(0.5f - (fabsf(Y) - hw)) : 0;
+		float spk = fmx(body, cone);
 
-	if (a > 0) { /* play/pause button */
-		int g = rm_pressed ? 92 : 40;
+		if (rm_muted) {
+			float u = (X - 9) * 0.7071f, v = Y * 0.7071f;
 
-		over(&c, g, g, g + 6, (int)(a * 255));
-		float edge = a - disc(d2, RM_BTN_R - 2, 1.0f / (2 * RM_BTN_R - 3));
-
-		over(&c, 110, 110, 118, (int)(clamp01(edge) * 255));
-		float icon = fmx(tri(X, Y, -24, -3, 15), fmx(bar(X, Y, 5, 11, 15), bar(X, Y, 16, 22, 15)));
-
-		over(&c, 236, 236, 236, (int)(icon * 255));
-	}
-	float sy = Y - RM_SUN_Y, s2 = X * X + sy * sy;
-
-	a = disc(s2, RM_SUN_R, 1.0f / (2 * RM_SUN_R + 1));
-	if (a > 0) { /* brightness button: a sun */
-		if (rm_bright) {
-			over(&c, 210, 150, 46, (int)(a * 255));
-		} else {
-			over(&c, 40, 40, 46, (int)(a * 255));
+			return fmx(spk, fmx(bar(u + v, u - v, -6, 6, 1.3f), bar(u - v, u + v, -6, 6, 1.3f)));
 		}
-		float sun = disc(s2, 7.5f, 1.0f / 16);
+		float wx = X + 2, wr = sqrtf(wx * wx + Y * Y);
 
-		if (s2 > 11 * 11 && s2 < 19 * 19) { /* 8 rays */
+		if (wx > fabsf(Y) * 0.9f) { /* two sound waves */
+			spk = fmx(spk, clamp01(0.5f - (fabsf(wr - 8) - 1.1f)));
+			spk = fmx(spk, clamp01(0.5f - (fabsf(wr - 13) - 1.1f)));
+		}
+		return spk;
+	}
+	default: { /* sun: disc and 8 rays */
+		float s2 = X * X + Y * Y, sun = disc(s2, 6.5f, 1.0f / 14);
+
+		if (s2 > 9.5f * 9.5f && s2 < 16 * 16) {
+			static const float dc[8] = {1, 0.7071f, 0, -0.7071f, -1, -0.7071f, 0, 0.7071f};
+
 			for (int k = 0; k < 8; k++) {
-				static const float dc[8] = {1, 0.7071f, 0, -0.7071f, -1, -0.7071f, 0,
-							    0.7071f};
 				float cx = dc[k], cy = dc[(k + 2) % 8];
-				float along = X * cx + sy * cy, across = fabsf(X * cy - sy * cx);
 
-				if (along > 0) {
-					sun = fmx(sun, clamp01(0.5f - (across - 1.3f)));
+				if (X * cx + Y * cy > 0) {
+					sun = fmx(sun, clamp01(0.5f - (fabsf(X * cy - Y * cx) - 1.2f)));
 				}
 			}
 		}
-		if (rm_bright) {
-			over(&c, 24, 18, 8, (int)(sun * 255));
+		return sun;
+	}
+	}
+}
+
+/* Curved arrows inside the knob: clockwise on the right ("+"), anticlockwise
+ * on the left ("-"), each an arc from 30 to 56 degrees with a head to 62.
+ */
+static float rm_arrows(float X, float Y, float d2)
+{
+	if (d2 < 160 * 160 || d2 > 182 * 182) {
+		return 0;
+	}
+	const float deg = 3.14159265f / 180;
+	float d = sqrtf(d2), th = atan2f(X, -Y) / deg; /* clock angle */
+	float a = 0;
+
+	for (int side = -1; side <= 1; side += 2) {
+		float t = th * side;
+
+		if (t > 30 && t < 57) {
+			a = fmx(a, clamp01(0.5f - (fabsf(d - 171) - 1.2f)));
+		}
+		float bx = sinf(side * 56 * deg) * 171, by = -cosf(side * 56 * deg) * 171;
+		float tx = sinf(side * 64 * deg) * 171, ty = -cosf(side * 64 * deg) * 171;
+		float ux = tx - bx, uy = ty - by, ul = sqrtf(ux * ux + uy * uy);
+
+		ux /= ul;
+		uy /= ul;
+		float sl = (X - bx) * ux + (Y - by) * uy, pl = -(X - bx) * uy + (Y - by) * ux;
+
+		a = fmx(a, tri(sl, pl, 0, ul, 6));
+	}
+	return a;
+}
+
+static float rm_signs(float X, float Y)
+{
+	const float sx = 0.7193f * 150, sy = -0.6947f * 150; /* 46 degrees, r 150 */
+	float plus = fmx(bar(X - sx, Y - sy, -6, 6, 1.4f), bar(Y - sy, X - sx, -6, 6, 1.4f));
+	float minus = bar(X + sx, Y - sy, -6, 6, 1.4f);
+
+	return fmx(plus, minus);
+}
+
+/* One pixel of the remote inside the knob (pixel centre, relative to the middle). */
+static uint16_t remote_px(float X, float Y)
+{
+	float d2 = X * X + Y * Y;
+	/* soft radial glow behind the buttons: lighter in the middle */
+	int gl = 30 - (int)(d2 * (16.0f / (190 * 190)));
+	struct rgb c = {gl - 2, gl - 1, gl + 3};
+
+	if (rm_muted) { /* "MUTED" curved over the mute button */
+		int lx = (int)(X + CX) - (int)(CX + MUTED_X0), ly = (int)(Y + CX) - (int)(CX + MUTED_Y0);
+
+		if (lx >= 0 && lx < MUTED_W && ly >= 0 && ly < MUTED_H && muted_a[ly * MUTED_W + lx]) {
+			over(&c, 235, 50, 50, muted_a[ly * MUTED_W + lx]);
+			return to565(&c);
+		}
+	}
+	for (int b = 0; b < RB_N; b++) {
+		float bx = X - rm_btn[b].x, by = Y - rm_btn[b].y, b2 = bx * bx + by * by;
+		float r = rm_btn[b].r;
+
+		if (b2 > (r + 2) * (r + 2)) {
+			continue;
+		}
+		float a = disc(b2, r, 1.0f / (2 * r + 1));
+		bool lit = b == rm_pressed || (b == RB_SUN && rm_bright);
+
+		if (lit && b == RB_SUN) {
+			over(&c, 210, 150, 46, (int)(a * 255));
+		} else if (b == RB_MUTE && rm_muted) {
+			over(&c, lit ? 240 : 196, 34, 40, (int)(a * 255));
 		} else {
-			over(&c, 236, 236, 236, (int)(sun * 255));
+			int g = lit ? 92 : 38;
+
+			over(&c, g, g, g + 6, (int)(a * 255));
+		}
+		float edge = a - disc(b2, r - 1.6f, 1.0f / (2 * r - 2));
+
+		if (b == RB_MUTE && rm_muted) {
+			over(&c, 255, 110, 110, (int)(clamp01(edge) * 255));
+		} else {
+			over(&c, 96, 96, 104, (int)(clamp01(edge) * 255));
+		}
+		float ic = rm_icon(b, bx, by);
+
+		if (b == RB_SUN && rm_bright) {
+			over(&c, 24, 18, 8, (int)(ic * 255));
+		} else {
+			over(&c, 236, 236, 236, (int)(ic * 255));
+		}
+		return to565(&c);
+	}
+	float ar = fmx(rm_arrows(X, Y, d2), rm_signs(X, Y));
+
+	if (ar > 0) {
+		if (rm_bright) {
+			over(&c, 210, 150, 46, (int)(ar * 200));
+		} else {
+			over(&c, 70, 200, 250, (int)(ar * 200));
 		}
 	}
 	return to565(&c);
@@ -1130,6 +1251,14 @@ static void render_rect(int x0, int y0, int x1, int y1)
 	qf_wait();
 }
 
+static void render_button(int b)
+{
+	int r = rm_btn[b].r + 3;
+
+	render_rect(CX + rm_btn[b].x - r, CX + rm_btn[b].y - r, CX + rm_btn[b].x + r,
+		    CX + rm_btn[b].y + r);
+}
+
 static void remote_key(uint8_t key)
 {
 	struct msg_key mk = {.key = key};
@@ -1137,10 +1266,17 @@ static void remote_key(uint8_t key)
 	ipm_send(ipm, 1, MSG_KEY, &mk, sizeof(mk));
 }
 
+/* knob angle in lookup steps (0.25 degree): the ring follows the finger */
+static int32_t rm_steps(void)
+{
+	int32_t st = (int32_t)lroundf(rm_pos * (WATCH_RING_ANG / 3600.0f)) % WATCH_RING_ANG;
+
+	return st < 0 ? st + WATCH_RING_ANG : st;
+}
+
 static void remote_knob_redraw(void)
 {
-	ring_shift = bezel_rot * WATCH_RING_ANG / 3600 * WATCH_RING_RAD;
-	bezel_shown = bezel_rot;
+	ring_shift = rm_steps() * WATCH_RING_RAD;
 	render_ring();
 	qf_wait();
 }
@@ -1148,11 +1284,12 @@ static void remote_knob_redraw(void)
 static void remote_set_mode(bool bright)
 {
 	rm_bright = bright;
-	ring_palp = bright ? ring_pal_amber : ring_pal;
+	ring_palp = bright ? knob_pal_amber : knob_pal;
 	rm_last_touch = k_uptime_get();
 	remote_knob_redraw();
-	render_rect(CX - RM_SUN_R - 2, CX + RM_SUN_Y - RM_SUN_R - 2, CX + RM_SUN_R + 2,
-		    CX + RM_SUN_Y + RM_SUN_R + 2);
+	/* the arrows change colour too: redraw the band they are in */
+	render_rect(CX - 185, CX - 185, CX + 185, CX - 60);
+	render_button(RB_SUN);
 }
 
 static void remote_enter(void)
@@ -1161,17 +1298,24 @@ static void remote_enter(void)
 		rm_prev_face = face;
 		rm_saved_bezel = bezel_rot;
 	}
+	memcpy(ring_q, knob_q, sizeof(ring_q)); /* the knob replaces the bezel strip */
 	face_setup(FACE_REMOTE);
-	rm_bright = rm_pressed = rm_active = false;
+	rm_bright = rm_active = false;
+	rm_pressed = -1;
+	ring_palp = knob_pal;
+	draw_full(); /* (with the knob where it was left: draw_full keeps ring_shift) */
+}
+
+static void remote_leave_ring(void)
+{
+	memcpy(ring_q, watch_ring_q, sizeof(ring_q)); /* the GMT bezel again */
 	ring_palp = ring_pal;
-	bezel_rot = (((rm_clicks * BEZEL_STEP) % 3600) + 3600) % 3600;
-	draw_full();
+	bezel_rot = rm_saved_bezel;
 }
 
 static void remote_exit(void)
 {
-	ring_palp = ring_pal;
-	bezel_rot = rm_saved_bezel;
+	remote_leave_ring();
 	face_setup(rm_prev_face);
 	draw_full();
 }
@@ -1192,7 +1336,7 @@ static void remote_frame(void)
 				rm_t0 = now;
 				rm_x0 = touch.x;
 				rm_y0 = touch.y;
-				rm_drag = r2 > 150.0f * 150.0f; /* on the knob */
+				rm_drag = r2 > 150.0f * 150.0f; /* on the knob (or the arrows) */
 				rm_moved = false;
 				rm_last_ang = ang;
 				rm_acc = 0;
@@ -1205,48 +1349,66 @@ static void remote_frame(void)
 
 					d += d > 1800 ? -3600 : (d < -1800 ? 3600 : 0);
 					rm_last_ang = ang;
-					rm_acc += d;
-					int steps = 0;
+					int32_t before = rm_steps();
 
-					/* one key per 6 degree click, a few per frame at most */
-					while (rm_acc >= BEZEL_STEP && steps < 6) {
-						rm_acc -= BEZEL_STEP;
-						rm_clicks++;
-						steps++;
-						remote_key(rm_bright ? KEY_BRIGHT_UP : KEY_VOL_UP);
+					rm_pos += d;
+					/* one key each time the knob crosses a key tick */
+					int32_t k_old = (int32_t)floorf((rm_pos - d) / (KNOB_KEY_DEG * 10));
+					int32_t k_new = (int32_t)floorf(rm_pos / (KNOB_KEY_DEG * 10));
+
+					for (int n = 0; k_new != k_old && n < 8; n++) {
+						bool up = k_new > k_old;
+
+						remote_key(rm_bright ? (up ? KEY_BRIGHT_UP : KEY_BRIGHT_DOWN)
+								     : (up ? KEY_VOL_UP : KEY_VOL_DOWN));
+						k_old += up ? 1 : -1;
+						if (!rm_bright && rm_muted) {
+							rm_muted = false; /* a volume key unmutes */
+							render_button(RB_MUTE);
+							render_rect(CX + MUTED_X0, CX + MUTED_Y0,
+								    CX + MUTED_X0 + MUTED_W,
+								    CX + MUTED_Y0 + MUTED_H);
+						}
 					}
-					while (rm_acc <= -BEZEL_STEP && steps < 6) {
-						rm_acc += BEZEL_STEP;
-						rm_clicks--;
-						steps++;
-						remote_key(rm_bright ? KEY_BRIGHT_DOWN : KEY_VOL_DOWN);
-					}
-					if (steps) {
-						bezel_rot = (((rm_clicks * BEZEL_STEP) % 3600) + 3600) % 3600;
+					if (rm_steps() != before) {
 						remote_knob_redraw();
 					}
 				}
 			}
 		} else if (rm_active) {
 			rm_active = false;
-			if (!rm_drag && !rm_moved && now - rm_t0 < 500) { /* a tap */
-				float sy = dy - RM_SUN_Y;
+			if (!rm_drag && !rm_moved && now - rm_t0 < 600) { /* a tap */
+				for (int b = 0; b < RB_N; b++) {
+					float bx = dx - rm_btn[b].x, by = dy - rm_btn[b].y;
+					float r = rm_btn[b].r + 8;
 
-				if (r2 < RM_BTN_R * RM_BTN_R) {
-					remote_key(KEY_PLAY_PAUSE);
-					rm_pressed = true;
-					rm_press_until = now + 150;
-					render_rect(CX - RM_BTN_R - 2, CX - RM_BTN_R - 2, CX + RM_BTN_R + 2,
-						    CX + RM_BTN_R + 2);
-				} else if (dx * dx + sy * sy < (RM_SUN_R + 6) * (RM_SUN_R + 6)) {
-					remote_set_mode(!rm_bright);
+					if (bx * bx + by * by > r * r) {
+						continue;
+					}
+					if (b == RB_SUN) {
+						remote_set_mode(!rm_bright);
+					} else if (b == RB_MUTE) {
+						remote_key(KEY_MUTE);
+						rm_muted = !rm_muted;
+						render_button(b);
+						render_rect(CX + MUTED_X0, CX + MUTED_Y0, CX + MUTED_X0 + MUTED_W,
+							    CX + MUTED_Y0 + MUTED_H);
+					} else {
+						remote_key(rm_btn[b].key);
+						rm_pressed = b;
+						rm_press_until = now + 150;
+						render_button(b);
+					}
+					break;
 				}
 			}
 		}
 	}
-	if (rm_pressed && now > rm_press_until) {
-		rm_pressed = false;
-		render_rect(CX - RM_BTN_R - 2, CX - RM_BTN_R - 2, CX + RM_BTN_R + 2, CX + RM_BTN_R + 2);
+	if (rm_pressed >= 0 && now > rm_press_until) {
+		int b = rm_pressed;
+
+		rm_pressed = -1;
+		render_button(b);
 	}
 	if (rm_bright && !rm_active && now - rm_last_touch > RM_IDLE_MS) {
 		remote_set_mode(false); /* back to volume */
@@ -1382,8 +1544,7 @@ static void handle_buttons(void)
 				remote_enter();
 			} else {
 				if (face == FACE_REMOTE) {
-					ring_palp = ring_pal;
-					bezel_rot = rm_saved_bezel;
+					remote_leave_ring();
 				}
 				face_setup(f);
 				draw_full();
@@ -1429,12 +1590,13 @@ int main(void)
 {
 	memcpy(ring_q, watch_ring_q, sizeof(ring_q));
 	memcpy(ring_pal, watch_ring_pal, sizeof(ring_pal));
+	memcpy(knob_pal, knob_pal_flash, sizeof(knob_pal));
 	for (int i = 0; i < 256; i++) { /* the knob's brightness-mode colours */
-		struct rgb c = from565(ring_pal[i]);
-		int l = 40 + ((c.r * 77 + c.g * 150 + c.b * 29) >> 8) * 215 / 255;
+		struct rgb c = from565(knob_pal[i]);
+		int l = 30 + ((c.r * 77 + c.g * 150 + c.b * 29) >> 8) * 225 / 255;
 		struct rgb a = {l, l * 72 / 100, l * 24 / 100};
 
-		ring_pal_amber[i] = to565(&a);
+		knob_pal_amber[i] = to565(&a);
 	}
 	ipm_register_callback(ipm, on_ipm, NULL);
 	ipm_set_enabled(ipm, 1);

@@ -25,6 +25,8 @@ enum {
 	KEY_PLAY_PAUSE,
 	KEY_BRIGHT_UP,
 	KEY_BRIGHT_DOWN,
+	KEY_NEXT,
+	KEY_PREV,
 };
 
 struct msg_key {
