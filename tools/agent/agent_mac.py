@@ -255,8 +255,9 @@ def main():
                 try:
                     with lock:
                         s.write(b"N " + base64.b64encode(data) + b"\n")
-                except Exception as e:
-                    print("text send failed:", e, file=sys.stderr)
+                except Exception:
+                    time.sleep(1)  # the watch is away (restarting, flashing): the
+                    continue       # main loop reconnects and says so
                 sent, sent_t = cur, now
             time.sleep(0.08)
 
