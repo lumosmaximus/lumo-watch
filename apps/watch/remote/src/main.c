@@ -1263,19 +1263,25 @@ static uint16_t remote_px(float X, float Y)
 		over(&c, ICON_R, ICON_G, ICON_B, (int)(ic * 255));
 		return to565(&c);
 	}
-	/* the level arc: from 12 o'clock clockwise, a dim track and the level */
+	/* the level meter: 60 small bars from 12 o'clock clockwise, lit up to the
+	 * level (volume, or brightness in brightness mode), dim beyond it
+	 */
 	if (rm_level >= 0 && d2 > 181 * 181 && d2 < 192 * 192) {
 		float d = sqrtf(d2);
-		float band = clamp01(0.5f - (fabsf(d - RM_ARC_R) - 2.6f));
-		float turns = fast_turns(X, Y), lv = rm_level * 0.01f;
-		float on = clamp01((lv - turns) * d * 6.28318531f + 0.5f); /* AA at the end */
+		float u = fast_turns(X, Y) * 60;
+		int seg = (int)u;
+		float f = u - seg, arc = d * (6.28318531f / 60);
+		float across = clamp01(0.5f - (fabsf(f - 0.5f) - 0.30f) * arc);
+		float along = clamp01(0.5f - (fabsf(d - RM_ARC_R) - 3.4f));
+		int a = (int)(across * along * 255);
 
-		if (band > 0) {
-			over(&c, 255, 255, 255, (int)(band * 40));
-			if (rm_bright) {
-				over(&c, 255, 212, 110, (int)(band * on * 255));
+		if (a > 0) {
+			if (seg >= rm_level * 60 / 100) {
+				over(&c, 255, 255, 255, a / 7);
+			} else if (rm_bright) {
+				over(&c, 255, 212, 110, a);
 			} else {
-				over(&c, 255, 150, 190, (int)(band * on * 255));
+				over(&c, 255, 150, 190, a);
 			}
 		}
 		return to565(&c);

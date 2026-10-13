@@ -5,8 +5,7 @@
 watch.py export): an unwrapped strip [ANG][RAD] of 8-bit palette indices plus
 a 256-colour palette, so core 1 draws and turns it with the bezel's lookup.
 
-A smooth pastel rainbow ring with a white dot
-per click,
+Bold rounded rainbow bars on dark plum (one white and longer: the marker),
 and a white marker that shows how far the knob has turned.
 
     uv run knob.py preview          -> knob_preview.png
@@ -35,35 +34,33 @@ def hsv(h, sat, val):
     return [int(255 * c) for c in colorsys.hsv_to_rgb(h % 1.0, sat, val)]
 
 
+KNOB_BARS = 48                         # bold bars round the knob (7.5 degrees each)
+
+
 def knob(theta, r):
-    """Colour at clock angle theta (degrees) and radius r (pixels): a pastel
-    rainbow knob with a white dot per click."""
-    if r < 193:                                      # soft inner rim
-        return (54, 34, 66)
-    inner = 199                                      # a smooth inner edge
-    if r < inner:
-        return (UNDER_IN[0], UNDER_IN[1], UNDER_IN[2])
-    base = hsv(theta / 360, 0.50, 1.0)               # pastel rainbow
-    # gentle 3D: a soft highlight top-left, a little darker at the outer edge
-    shade = 0.90 + 0.10 * math.cos(math.radians(theta - 315))
-    shade *= 1.0 - 0.18 * max(0.0, (r - 222) / 11) ** 2
-    # a soft lighter lip along the inner edge
-    shade *= 1.0 + 0.12 * max(0.0, 1 - (r - inner) / 4)
-    col = [c * shade for c in base]
-    # a white dot per click, small, near the inner edge
-    step = KNOB_CLICK_DEG
-    d = abs(((theta + step / 2) % step) - step / 2) * math.pi / 180 * r
-    if abs(r - 215) < 2.6:
-        dot = max(0.0, min(1.0, 0.5 - (math.hypot(d, r - 215) - 1.3)))
-        col = [c + (255 - c) * dot * 0.85 for c in col]
-    # the marker: a white disc with a soft plum ring, at 12 o'clock
-    dx = math.radians(((theta + 180) % 360) - 180) * r
-    dist = math.hypot(dx, r - 222)
-    ring = max(0.0, min(1.0, 0.5 - (dist - 10.0)))   # a bold plum ring ...
-    core = max(0.0, min(1.0, 0.5 - (dist - 6.5)))    # ... round a white centre
-    col = [c + (v - c) * ring for c, v in zip(col, (62, 28, 72))]
-    col = [c + (255 - c) * core for c in col]
-    return tuple(int(max(0, min(255, c))) for c in col)
+    """Colour at clock angle theta (degrees) and radius r (pixels): bold rounded
+    rainbow bars on dark plum, one of them white and longer (the marker), so
+    the knob's turning is easy to see."""
+    bg = (34, 20, 44)
+    if r < 199:
+        return UNDER_IN
+    pitch = 360 / KNOB_BARS
+    k = int(((theta + pitch / 2) % 360) // pitch)      # bar index, 0 at 12
+    centre = k * pitch
+    da = ((theta - centre + 180) % 360) - 180          # degrees from the bar's middle
+    across = abs(da) * math.pi / 180 * r               # px from the bar's centre line
+    marker = k == 0
+    half_w = 3.4 if not marker else 3.8
+    r0, r1 = (202, 229) if not marker else (199.5, 231.5)
+    # capsule: a bar with round ends
+    dr = max(0.0, r0 + half_w - r, r - (r1 - half_w))
+    dist = math.hypot(max(0.0, across - 0), dr) - half_w
+    a = max(0.0, min(1.0, 0.5 - dist))
+    col = (255, 255, 255) if marker else hsv(centre / 360, 0.50, 1.0)
+    # a little lighter towards the outer end, for a rounded look
+    lift = 1.0 + 0.10 * max(0.0, (r - r0) / (r1 - r0))
+    col = [min(255, c * lift) for c in col]
+    return tuple(int(b + (c - b) * a) for b, c in zip(bg, col))
 
 
 def strip():
