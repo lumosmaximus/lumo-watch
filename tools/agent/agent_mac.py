@@ -230,7 +230,20 @@ def drain(s):
                 print("watch:", ln.decode(errors="replace").strip())
 
 
+def single_instance():
+    """Two helpers would both send to the watch: allow only one."""
+    import fcntl
+    import tempfile
+    f = open(tempfile.gettempdir() + "/watch-agent.lock", "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        sys.exit("another watch helper is already running (stop it first)")
+    return f  # keep it open: the lock lasts as long as this process
+
+
 def main():
+    _lock = single_instance()  # noqa: F841
     s = port()
     threading.Thread(target=drain, args=(s,), daemon=True).start()
     last = None
