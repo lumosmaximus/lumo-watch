@@ -1340,7 +1340,16 @@ static void remote_frame(void)
 				rm_t0 = now;
 				rm_x0 = touch.x;
 				rm_y0 = touch.y;
-				rm_drag = r2 > 150.0f * 150.0f; /* on the knob (or the arrows) */
+				/* the knob: anywhere from 120 px out (the arrows too), except
+				 * on a button
+				 */
+				rm_drag = r2 > 120.0f * 120.0f;
+				for (int b = 0; b < RB_N && rm_drag; b++) {
+					float bx = dx - rm_btn[b].x, by = dy - rm_btn[b].y;
+					float r = rm_btn[b].r + 6;
+
+					rm_drag = bx * bx + by * by > r * r;
+				}
 				rm_moved = false;
 				rm_last_ang = ang;
 				rm_acc = 0;
