@@ -1070,6 +1070,11 @@ static uint16_t knob_pal[256], knob_pal_amber[256];
 static bool rm_bright, rm_active, rm_drag, rm_moved;
 static bool rm_muted; /* our own idea: mute toggles it, a volume key clears it */
 static bool rm_playing; /* likewise: play/pause toggles it (starts as paused) */
+/* while playing, a dot orbits the play button (one turn per RM_ORBIT_MS) */
+#define RM_ORBIT_R  61
+#define RM_ORBIT_MS 2000
+static float rm_orbit_x, rm_orbit_y = -RM_ORBIT_R; /* dot centre, from the middle */
+static float rm_orbit_a;                            /* its angle, radians */
 static float rm_pos;  /* knob angle, 0.1 degree, unwrapped */
 static int rm_pressed = -1;
 static int64_t rm_last_touch, rm_t0, rm_press_until;
@@ -1217,6 +1222,17 @@ static uint16_t remote_px(float X, float Y)
 		} else {
 			over(&c, 236, 236, 236, (int)(ic * 255));
 		}
+		return to565(&c);
+	}
+	/* the orbit: a faint track, and the dot (glowing) */
+	if (d2 > 52 * 52 && d2 < 70 * 70) {
+		float d = sqrtf(d2);
+		float track = clamp01(0.5f - (fabsf(d - RM_ORBIT_R) - 0.4f)) * 0.35f;
+		float ox = X - rm_orbit_x, oy = Y - rm_orbit_y, o2 = ox * ox + oy * oy;
+		float dot = disc(o2, 3.6f, 1.0f / 8.2f);
+		float glow = o2 < 81 ? (1 - sqrtf(o2) / 9) * 0.45f : 0;
+
+		over(&c, 70, 200, 250, (int)(fmx(track, fmx(dot, glow)) * 255));
 		return to565(&c);
 	}
 	float ar = fmx(rm_arrows(X, Y, d2), rm_signs(X, Y));
@@ -1418,6 +1434,26 @@ static void remote_frame(void)
 					break;
 				}
 			}
+		}
+	}
+	if (rm_playing) { /* move the orbit dot: redraw where it was and where it is */
+		static int64_t last;
+		float a = rm_orbit_a + (now - last) * (2 * 3.14159265f / RM_ORBIT_MS);
+
+		if (now - last > 100) {
+			a = rm_orbit_a; /* just started: carry on from where it stopped */
+		}
+		last = now;
+		float nx = sinf(a) * RM_ORBIT_R, ny = -cosf(a) * RM_ORBIT_R;
+
+		if (fabsf(nx - rm_orbit_x) >= 1 || fabsf(ny - rm_orbit_y) >= 1) {
+			float ox = rm_orbit_x, oy = rm_orbit_y;
+
+			rm_orbit_a = a;
+			rm_orbit_x = nx;
+			rm_orbit_y = ny;
+			render_rect(CX + fmn(ox, nx) - 11, CX + fmn(oy, ny) - 11, CX + fmx(ox, nx) + 11,
+				    CX + fmx(oy, ny) + 11);
 		}
 	}
 	if (rm_pressed >= 0 && now > rm_press_until) {
