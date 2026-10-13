@@ -231,7 +231,7 @@ static int weekday(int y, int m, int d)
 static void console_rx(void *a, void *b, void *c)
 {
 	const struct device *con = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
-	char line[40];
+	char line[128];
 	size_t n = 0;
 
 	while (1) {
@@ -252,6 +252,35 @@ static void console_rx(void *a, void *b, void *c)
 		if (line[0] == 'B' && line[1] == 0) {
 			printk("rebooting to download mode\n");
 			usb_reboot_to_download();
+		}
+		if (line[0] == 'S' && line[1] == ' ') { /* "S v=37 m=0 b=80 p=1" from tools/agent */
+			struct msg_state st = {-1, -1, -1, -1};
+			char *p = line + 2;
+
+			while (*p) {
+				char k = p[0];
+				int v = -1;
+
+				if (p[1] == '=' && sscanf(p + 2, "%d", &v) == 1) {
+					if (k == 'v') {
+						st.volume = CLAMP(v, 0, 100);
+					} else if (k == 'm') {
+						st.muted = v != 0;
+					} else if (k == 'b') {
+						st.brightness = v < 0 ? -1 : CLAMP(v, 0, 100);
+					} else if (k == 'p') {
+						st.playing = v < 0 ? -1 : (v != 0);
+					}
+				}
+				while (*p && *p != ' ') {
+					p++;
+				}
+				while (*p == ' ') {
+					p++;
+				}
+			}
+			msg_send(ipm, MSG_STATE, &st, sizeof(st));
+			continue;
 		}
 		if (line[0] == 'K' && line[1] >= '1' && line[1] <= '8') { /* test: send a key */
 			usb_key(line[1] - '0');

@@ -17,6 +17,15 @@
 #define MSG_BUTTON 5 /* core 0 -> core 1: a button event */
 #define MSG_HELLO  6 /* core 1 -> core 0: ready, please send the time */
 #define MSG_KEY    7 /* core 1 -> core 0: send a media key to the computer (USB HID) */
+#define MSG_STATE  8 /* core 0 -> core 1: the computer's media state (tools/agent) */
+
+/* fields set to -1 are unknown (the helper could not read them) */
+struct msg_state {
+	int8_t volume;     /* 0..100 */
+	int8_t muted;      /* 0/1 */
+	int8_t brightness; /* 0..100 */
+	int8_t playing;    /* 0/1 */
+};
 
 enum {
 	KEY_VOL_UP = 1,

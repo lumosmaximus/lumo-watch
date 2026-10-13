@@ -70,6 +70,11 @@ static volatile int64_t base_ms = -1;
 static volatile struct msg_touch touch;
 static volatile bool touch_new;
 
+/* the computer's media state, from tools/agent through core 0 */
+static volatile struct msg_state host = {-1, -1, -1, -1};
+static volatile int64_t host_ms = -100000;
+static volatile bool host_new;
+
 static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volatile void *data)
 {
 	if (id == MSG_TIME) {
@@ -78,6 +83,10 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 	} else if (id == MSG_TOUCH) {
 		memcpy((void *)&touch, (const void *)data, sizeof(touch));
 		touch_new = true;
+	} else if (id == MSG_STATE) {
+		memcpy((void *)&host, (const void *)data, sizeof(host));
+		host_ms = k_uptime_get();
+		host_new = true;
 	} else if (id == MSG_BUTTON) {
 		uint8_t b = ((volatile struct msg_button *)data)->btn;
 
@@ -1075,6 +1084,12 @@ static uint16_t knob_pal[256], knob_pal_amber[256];
 static bool rm_bright, rm_active, rm_drag, rm_moved;
 static bool rm_muted; /* our own idea: mute toggles it, a volume key clears it */
 static bool rm_playing; /* likewise: play/pause toggles it (starts as paused) */
+/* level arc (just inside the knob): the computer's volume or brightness,
+ * 0..100, or -1 when no helper app is reporting it
+ */
+#define RM_ARC_R  186.5f
+static int rm_level = -1;
+static int rm_level_now(void);
 /* A visualiser around the play button: RM_VIS_N bars from radius RM_VIS_R0,
  * up to RM_VIS_H long, bouncing while playing and fading away when paused.
  * (Made up on the watch for now; a companion app could send real levels.)
@@ -1248,6 +1263,23 @@ static uint16_t remote_px(float X, float Y)
 		over(&c, ICON_R, ICON_G, ICON_B, (int)(ic * 255));
 		return to565(&c);
 	}
+	/* the level arc: from 12 o'clock clockwise, a dim track and the level */
+	if (rm_level >= 0 && d2 > 181 * 181 && d2 < 192 * 192) {
+		float d = sqrtf(d2);
+		float band = clamp01(0.5f - (fabsf(d - RM_ARC_R) - 2.6f));
+		float turns = fast_turns(X, Y), lv = rm_level * 0.01f;
+		float on = clamp01((lv - turns) * d * 6.28318531f + 0.5f); /* AA at the end */
+
+		if (band > 0) {
+			over(&c, 255, 255, 255, (int)(band * 40));
+			if (rm_bright) {
+				over(&c, 255, 212, 110, (int)(band * on * 255));
+			} else {
+				over(&c, 255, 150, 190, (int)(band * on * 255));
+			}
+		}
+		return to565(&c);
+	}
 	/* the visualiser ring */
 	if (d2 > (RM_VIS_R0 - 1) * (RM_VIS_R0 - 1) &&
 	    d2 < (RM_VIS_R0 + RM_VIS_H + 1) * (RM_VIS_R0 + RM_VIS_H + 1)) {
@@ -1402,9 +1434,38 @@ static void remote_exit(void)
 	draw_full();
 }
 
+static int rm_level_now(void)
+{
+	if (k_uptime_get() - host_ms > 5000) {
+		return -1; /* no helper app (any more) */
+	}
+	return rm_bright ? host.brightness : host.volume;
+}
+
 static void remote_frame(void)
 {
 	int64_t now = k_uptime_get();
+
+	/* follow the computer when the helper app reports its state */
+	if (host_new) {
+		host_new = false;
+		if (host.muted >= 0 && (host.muted != 0) != rm_muted) {
+			rm_muted = host.muted;
+			render_button(RB_MUTE);
+			render_rect(CX + MUTED_X0, CX + MUTED_Y0, CX + MUTED_X0 + MUTED_W,
+				    CX + MUTED_Y0 + MUTED_H);
+		}
+		if (host.playing >= 0 && (host.playing != 0) != rm_playing) {
+			rm_playing = host.playing;
+			render_button(RB_PLAY);
+		}
+	}
+	int lv = rm_level_now();
+
+	if (lv != rm_level) { /* the arc follows the level (or goes away) */
+		rm_level = lv;
+		render_annulus(180, 193);
+	}
 
 	if (touch_new) {
 		touch_new = false;

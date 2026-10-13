@@ -59,9 +59,9 @@ def knob(theta, r):
     # the marker: a white disc with a soft plum ring, at 12 o'clock
     dx = math.radians(((theta + 180) % 360) - 180) * r
     dist = math.hypot(dx, r - 222)
-    ring = max(0.0, min(1.0, 0.5 - (dist - 7.2)))
-    core = max(0.0, min(1.0, 0.5 - (dist - 5.5)))
-    col = [c + (90 - c) * ring for c in col]
+    ring = max(0.0, min(1.0, 0.5 - (dist - 10.0)))   # a bold plum ring ...
+    core = max(0.0, min(1.0, 0.5 - (dist - 6.5)))    # ... round a white centre
+    col = [c + (v - c) * ring for c, v in zip(col, (62, 28, 72))]
     col = [c + (255 - c) * core for c in col]
     return tuple(int(max(0, min(255, c))) for c in col)
 
