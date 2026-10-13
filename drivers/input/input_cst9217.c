@@ -18,7 +18,9 @@
  *     while the finger stays down, so after an interrupt we poll every
  *     CONFIG_INPUT_CST9217_POLL_MS until the finger lifts.
  *
- * Only the first finger is reported (this is a pointer, not multi-touch).
+ * Only the first finger's position is reported (this is a pointer, not
+ * multi-touch), plus the number of fingers down as INPUT_ABS_MT_SLOT (sent
+ * before the position), for gestures such as a two-finger hold.
  */
 
 #define DT_DRV_COMPAT hynitron_cst9217
@@ -85,6 +87,7 @@ static bool cst9217_process(const struct device *dev)
 		uint16_t x = (buf[1] << 4) | (buf[3] >> 4);
 		uint16_t y = (buf[2] << 4) | (buf[3] & 0x0f);
 
+		input_report_abs(dev, INPUT_ABS_MT_SLOT, fingers, false, K_FOREVER);
 		input_touchscreen_report_pos(dev, x, y, K_FOREVER);
 		input_report_key(dev, INPUT_BTN_TOUCH, 1, true, K_FOREVER);
 		down = true;

@@ -1,0 +1,36 @@
+/*
+ * Copyright (c) 2026 Adi Nandanamudi
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Core 0: the USB-C port becomes our own USB device (the chip's USB OTG
+ * controller): a CDC-ACM serial port for the console, plus a HID interface
+ * that sends media keys (volume, play/pause, brightness) to the computer.
+ * The OTG controller and the built-in USB-Serial-JTAG share the one PHY, so
+ * the JTAG serial port is off while this runs; see src/usb_hid.c for flashing.
+ */
+
+/ {
+	chosen {
+		zephyr,console = &cdc_acm_uart0;
+	};
+};
+
+&usb_serial {
+	status = "disabled";
+};
+
+zephyr_udc0: &usb_otg {
+	status = "okay";
+
+	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+	};
+
+	hid_media: hid_media {
+		compatible = "zephyr,hid-device";
+		label = "media keys";
+		protocol-code = "none";
+		in-report-size = <16>;
+		in-polling-period-us = <1000>;
+	};
+};

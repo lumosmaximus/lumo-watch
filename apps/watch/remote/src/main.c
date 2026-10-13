@@ -89,7 +89,8 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 /* Faces: the GMT (Rolex style, rotating bezel, date) and the chronograph
  * (moon-watch style, fixed tachymeter, three subdials).
  */
-enum { FACE_GMT, FACE_CHRONO, FACE_CHRONO_WHITE, NFACES };
+enum { FACE_GMT, FACE_CHRONO, FACE_CHRONO_WHITE, FACE_REMOTE, NFACES };
+/* FACE_REMOTE is the media remote: the bezel is a volume (or brightness) knob */
 #define BOOT_FACE FACE_CHRONO_WHITE /* not remembered across resets yet */
 static int face = FACE_GMT;
 
@@ -129,6 +130,8 @@ static int32_t ring_shift;
  */
 static uint8_t ring_q[WATCH_RING_ANG * WATCH_RING_RAD];
 static uint16_t ring_pal[256];
+static uint16_t ring_pal_amber[256]; /* the knob in brightness mode */
+static const uint16_t *ring_palp = ring_pal;
 /* sweep hand's screen bounding box at its current angle */
 static int16_t swb_x0, swb_y0, swb_x1, swb_y1;
 
@@ -504,6 +507,8 @@ static inline uint16_t to565(const struct rgb *c)
 	return ((c->r & 0xf8) << 8) | ((c->g & 0xfc) << 3) | (c->b >> 3);
 }
 
+static void remote_row(uint16_t *o, int x0, int x1, int y);
+
 static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 {
 	uint32_t pt0 = k_cycle_get_32();
@@ -517,9 +522,11 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 	bool hand_on[MAXH];
 	/* does this box reach the bezel ring at all? (corners vs radii) */
 	float fxm = fmx(fabsf(x0 - CX), fabsf(x1 + 1 - CX)), fym = fmx(fabsf(y0 - CX), fabsf(y1 + 1 - CX));
-	bool ring = gmt_face &&
+	const bool remote = face == FACE_REMOTE;
+	bool ring = (gmt_face || remote) &&
 		    fxm * fxm + fym * fym > (WATCH_BEZEL_IN - 1) * (WATCH_BEZEL_IN - 1);
-	const bool sweep_on = swb_x1 >= x0 && swb_x0 <= x1 && swb_y1 >= y0 && swb_y0 <= y1;
+	const bool sweep_on = !remote && swb_x1 >= x0 && swb_x0 <= x1 && swb_y1 >= y0 &&
+			      swb_y0 <= y1;
 	/* plain-shaft stretch of the sweep hand ends at its lume dot, if any */
 	const float d0 = sw.dot ? sw.dot : (sw.loz ? sw.loz : sw.tip + 10);
 
@@ -553,7 +560,11 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 				int a = MAX(x, sp[1] + 1), b = MIN(x1, sp[2] - 1);
 
 				if (b >= a) {
-					memcpy(&o[a - x0], &drow[a], (b - a + 1) * 2);
+					if (remote) {
+						remote_row(&o[a - x0], a, b, y);
+					} else {
+						memcpy(&o[a - x0], &drow[a], (b - a + 1) * 2);
+					}
 				}
 			}
 			if (hi < x1) {
@@ -562,7 +573,11 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 				memset(&o[a - x0], 0, (x1 - a + 1) * 2);
 			}
 		} else {
-			memcpy(o, &drow[x0], w * 2);
+			if (remote) {
+				remote_row(o, x0, x1, y);
+			} else {
+				memcpy(o, &drow[x0], w * 2);
+			}
 		}
 		if (date && y >= dy0 && y < dy0 + WATCH_DATE_H && x1 >= dx0 &&
 		    x0 < dx0 + WATCH_DATE_W) {
@@ -600,7 +615,7 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 					if (t < 0) {
 						t += total;
 					}
-					*op++ = ring_pal[ring_q[t]];
+					*op++ = ring_palp[ring_q[t]];
 				}
 				idx += sb - sa + 1;
 			}
@@ -900,6 +915,10 @@ static void face_setup(int f)
 {
 	face = f;
 	memset(hands, 0, sizeof(hands));
+	if (f == FACE_REMOTE) {
+		nhands = 0; /* no hands: the bezel knob and buttons only */
+		return;
+	}
 	if (f == FACE_GMT) {
 		nhands = 3;
 		/* the marked range comes from the hand images these shapes replaced */
@@ -963,6 +982,9 @@ static int32_t face_angles(int64_t day_ms, int64_t now)
 	int32_t hour_a = (int32_t)((day_ms % 43200000) * 3600 / 43200000);
 	int32_t min_a = (int32_t)((day_ms % 3600000) * 3600 / 3600000);
 
+	if (face == FACE_REMOTE) {
+		return 0;
+	}
 	if (face == FACE_GMT) {
 		hands[0].ang = (int32_t)(day_ms * 3600 / 86400000);
 		hands[1].ang = hour_a;
@@ -1014,13 +1036,230 @@ static void draw_full(void)
 	qf_wait();
 }
 
+/* ---- the media remote --------------------------------------------------------------
+ * The GMT bezel becomes a knob: each 6 degree click sends one volume step
+ * (clockwise up) to the computer through core 0's USB HID. Centre: play/pause.
+ * Sun button below: the knob switches to brightness (its palette turns amber)
+ * until the button is pressed again or nothing touches it for 30 s.
+ * Open/close: hold two fingers (or one, still, in the middle); PWR also plays/
+ * pauses, BOOT also switches the mode.
+ */
+
+#define RM_BTN_R   56   /* play/pause button radius */
+#define RM_SUN_Y   118  /* brightness button: centre below the middle */
+#define RM_SUN_R   30
+#define RM_IDLE_MS 30000
+
+static bool rm_bright, rm_pressed, rm_active, rm_drag, rm_moved;
+static int64_t rm_last_touch, rm_t0, rm_press_until;
+static int32_t rm_clicks, rm_last_ang, rm_saved_bezel;
+static float rm_acc;
+static int rm_x0, rm_y0, rm_prev_face = BOOT_FACE;
+
+/* One pixel of the remote's centre (pixel-centre coords relative to the middle). */
+static uint16_t remote_px(float X, float Y)
+{
+	struct rgb c = {14, 14, 16};
+	float d2 = X * X + Y * Y;
+	float a = disc(d2, RM_BTN_R, 1.0f / (2 * RM_BTN_R + 1));
+
+	if (a > 0) { /* play/pause button */
+		int g = rm_pressed ? 92 : 40;
+
+		over(&c, g, g, g + 6, (int)(a * 255));
+		float edge = a - disc(d2, RM_BTN_R - 2, 1.0f / (2 * RM_BTN_R - 3));
+
+		over(&c, 110, 110, 118, (int)(clamp01(edge) * 255));
+		float icon = fmx(tri(X, Y, -24, -3, 15), fmx(bar(X, Y, 5, 11, 15), bar(X, Y, 16, 22, 15)));
+
+		over(&c, 236, 236, 236, (int)(icon * 255));
+	}
+	float sy = Y - RM_SUN_Y, s2 = X * X + sy * sy;
+
+	a = disc(s2, RM_SUN_R, 1.0f / (2 * RM_SUN_R + 1));
+	if (a > 0) { /* brightness button: a sun */
+		if (rm_bright) {
+			over(&c, 210, 150, 46, (int)(a * 255));
+		} else {
+			over(&c, 40, 40, 46, (int)(a * 255));
+		}
+		float sun = disc(s2, 7.5f, 1.0f / 16);
+
+		if (s2 > 11 * 11 && s2 < 19 * 19) { /* 8 rays */
+			for (int k = 0; k < 8; k++) {
+				static const float dc[8] = {1, 0.7071f, 0, -0.7071f, -1, -0.7071f, 0,
+							    0.7071f};
+				float cx = dc[k], cy = dc[(k + 2) % 8];
+				float along = X * cx + sy * cy, across = fabsf(X * cy - sy * cx);
+
+				if (along > 0) {
+					sun = fmx(sun, clamp01(0.5f - (across - 1.3f)));
+				}
+			}
+		}
+		if (rm_bright) {
+			over(&c, 24, 18, 8, (int)(sun * 255));
+		} else {
+			over(&c, 236, 236, 236, (int)(sun * 255));
+		}
+	}
+	return to565(&c);
+}
+
+static void remote_row(uint16_t *o, int x0, int x1, int y)
+{
+	const float Y = y + 0.5f - CX;
+
+	for (int x = x0; x <= x1; x++) {
+		float X = x + 0.5f - CX;
+
+		*o++ = X * X + Y * Y > (WATCH_BEZEL_IN + 2) * (WATCH_BEZEL_IN + 2) ? 0 : remote_px(X, Y);
+	}
+}
+
+/* Redraw a rectangle (any size: split into strips that fit the band buffer). */
+static void render_rect(int x0, int y0, int x1, int y1)
+{
+	x0 = MAX(0, x0 & ~1);
+	x1 = MIN(N - 1, x1 | 1);
+	int w = x1 - x0 + 1, rows = (BAND * N) / w;
+
+	for (int y = MAX(0, y0); y <= MIN(N - 1, y1); y += rows) {
+		render_box(x0, y, x1, MIN(MIN(N - 1, y1), y + rows - 1));
+	}
+	qf_wait();
+}
+
+static void remote_key(uint8_t key)
+{
+	struct msg_key mk = {.key = key};
+
+	ipm_send(ipm, 1, MSG_KEY, &mk, sizeof(mk));
+}
+
+static void remote_knob_redraw(void)
+{
+	ring_shift = bezel_rot * WATCH_RING_ANG / 3600 * WATCH_RING_RAD;
+	bezel_shown = bezel_rot;
+	render_ring();
+	qf_wait();
+}
+
+static void remote_set_mode(bool bright)
+{
+	rm_bright = bright;
+	ring_palp = bright ? ring_pal_amber : ring_pal;
+	rm_last_touch = k_uptime_get();
+	remote_knob_redraw();
+	render_rect(CX - RM_SUN_R - 2, CX + RM_SUN_Y - RM_SUN_R - 2, CX + RM_SUN_R + 2,
+		    CX + RM_SUN_Y + RM_SUN_R + 2);
+}
+
+static void remote_enter(void)
+{
+	if (face != FACE_REMOTE) {
+		rm_prev_face = face;
+		rm_saved_bezel = bezel_rot;
+	}
+	face_setup(FACE_REMOTE);
+	rm_bright = rm_pressed = rm_active = false;
+	ring_palp = ring_pal;
+	bezel_rot = (((rm_clicks * BEZEL_STEP) % 3600) + 3600) % 3600;
+	draw_full();
+}
+
+static void remote_exit(void)
+{
+	ring_palp = ring_pal;
+	bezel_rot = rm_saved_bezel;
+	face_setup(rm_prev_face);
+	draw_full();
+}
+
+static void remote_frame(void)
+{
+	int64_t now = k_uptime_get();
+
+	if (touch_new) {
+		touch_new = false;
+		float dx = touch.x + 0.5f - CX, dy = touch.y + 0.5f - CX, r2 = dx * dx + dy * dy;
+		int32_t ang = (int32_t)(atan2f(dx, -dy) * (1800.0f / 3.14159265f));
+
+		if (touch.down) {
+			rm_last_touch = now;
+			if (!rm_active) {
+				rm_active = true;
+				rm_t0 = now;
+				rm_x0 = touch.x;
+				rm_y0 = touch.y;
+				rm_drag = r2 > 150.0f * 150.0f; /* on the knob */
+				rm_moved = false;
+				rm_last_ang = ang;
+				rm_acc = 0;
+			} else {
+				int mx = touch.x - rm_x0, my = touch.y - rm_y0;
+
+				rm_moved |= mx * mx + my * my > 12 * 12;
+				if (rm_drag) {
+					int32_t d = ang - rm_last_ang;
+
+					d += d > 1800 ? -3600 : (d < -1800 ? 3600 : 0);
+					rm_last_ang = ang;
+					rm_acc += d;
+					int steps = 0;
+
+					/* one key per 6 degree click, a few per frame at most */
+					while (rm_acc >= BEZEL_STEP && steps < 6) {
+						rm_acc -= BEZEL_STEP;
+						rm_clicks++;
+						steps++;
+						remote_key(rm_bright ? KEY_BRIGHT_UP : KEY_VOL_UP);
+					}
+					while (rm_acc <= -BEZEL_STEP && steps < 6) {
+						rm_acc += BEZEL_STEP;
+						rm_clicks--;
+						steps++;
+						remote_key(rm_bright ? KEY_BRIGHT_DOWN : KEY_VOL_DOWN);
+					}
+					if (steps) {
+						bezel_rot = (((rm_clicks * BEZEL_STEP) % 3600) + 3600) % 3600;
+						remote_knob_redraw();
+					}
+				}
+			}
+		} else if (rm_active) {
+			rm_active = false;
+			if (!rm_drag && !rm_moved && now - rm_t0 < 500) { /* a tap */
+				float sy = dy - RM_SUN_Y;
+
+				if (r2 < RM_BTN_R * RM_BTN_R) {
+					remote_key(KEY_PLAY_PAUSE);
+					rm_pressed = true;
+					rm_press_until = now + 150;
+					render_rect(CX - RM_BTN_R - 2, CX - RM_BTN_R - 2, CX + RM_BTN_R + 2,
+						    CX + RM_BTN_R + 2);
+				} else if (dx * dx + sy * sy < (RM_SUN_R + 6) * (RM_SUN_R + 6)) {
+					remote_set_mode(!rm_bright);
+				}
+			}
+		}
+	}
+	if (rm_pressed && now > rm_press_until) {
+		rm_pressed = false;
+		render_rect(CX - RM_BTN_R - 2, CX - RM_BTN_R - 2, CX + RM_BTN_R + 2, CX + RM_BTN_R + 2);
+	}
+	if (rm_bright && !rm_active && now - rm_last_touch > RM_IDLE_MS) {
+		remote_set_mode(false); /* back to volume */
+	}
+}
+
 /* ---- buttons and the face picker ------------------------------------------------------ */
 
 K_MSGQ_DEFINE(buttons, sizeof(uint8_t), 8, 1);
 
-#define PICK_R  84 /* thumbnail radius */
-static const int pick_cx[NFACES] = {233, 138, 328};
-static const int pick_cy[NFACES] = {128, 300, 300};
+#define PICK_R  80 /* thumbnail radius */
+static const int pick_cx[NFACES] = {147, 319, 147, 319};
+static const int pick_cy[NFACES] = {147, 147, 319, 319};
 
 /* Bezel colour at (x, y) at the current turn, or bg if not on the ring. */
 static uint16_t ring_at(int x, int y, uint16_t bg)
@@ -1036,7 +1275,7 @@ static uint16_t ring_at(int x, int y, uint16_t bg)
 			if (t < 0) {
 				t += WATCH_RING_ANG * WATCH_RING_RAD;
 			}
-			return ring_pal[ring_q[t]];
+			return ring_palp[ring_q[t]];
 		}
 		if (sp[1] >= sp[0]) {
 			idx += sp[1] - sp[0] + 1;
@@ -1050,7 +1289,7 @@ static void draw_picker(int sel)
 {
 	const uint16_t *dials[NFACES] = {(const uint16_t *)watch_dial,
 					 (const uint16_t *)speed_dial,
-					 (const uint16_t *)speed_white_dial};
+					 (const uint16_t *)speed_white_dial, NULL};
 	const int k = (int)(CX * 256 / PICK_R); /* dial pixels per thumbnail pixel, x256 */
 
 	for (int y0 = 0; y0 < N; y0 += BAND) {
@@ -1068,8 +1307,12 @@ static void draw_picker(int sel)
 					if (d2 < PICK_R * PICK_R) {
 						int sx = (int)CX + dx * k / 256, sy = (int)CX + dy * k / 256;
 
-						v = dials[f][sy * N + sx];
-						if (f == FACE_GMT) {
+						if (dials[f]) {
+							v = dials[f][sy * N + sx];
+						} else {
+							remote_row(&v, sx, sx, sy);
+						}
+						if (f == FACE_GMT || f == FACE_REMOTE) {
 							v = ring_at(sx, sy, v);
 						}
 					} else if (f == sel && d2 < (PICK_R + 6) * (PICK_R + 6) &&
@@ -1133,8 +1376,34 @@ static void handle_buttons(void)
 		int64_t now = k_uptime_get();
 
 		if (btn == BTN_BOOT_LONG) {
-			face_setup(pick_face());
-			draw_full();
+			int f = pick_face();
+
+			if (f == FACE_REMOTE) {
+				remote_enter();
+			} else {
+				if (face == FACE_REMOTE) {
+					ring_palp = ring_pal;
+					bezel_rot = rm_saved_bezel;
+				}
+				face_setup(f);
+				draw_full();
+			}
+			continue;
+		}
+		if (btn == BTN_TWO_HOLD) {
+			if (face == FACE_REMOTE) {
+				remote_exit();
+			} else {
+				remote_enter();
+			}
+			continue;
+		}
+		if (face == FACE_REMOTE) {
+			if (btn == BTN_PWR) {
+				remote_key(KEY_PLAY_PAUSE);
+			} else if (btn == BTN_BOOT) {
+				remote_set_mode(!rm_bright);
+			}
 			continue;
 		}
 		if (face == FACE_GMT) {
@@ -1160,6 +1429,13 @@ int main(void)
 {
 	memcpy(ring_q, watch_ring_q, sizeof(ring_q));
 	memcpy(ring_pal, watch_ring_pal, sizeof(ring_pal));
+	for (int i = 0; i < 256; i++) { /* the knob's brightness-mode colours */
+		struct rgb c = from565(ring_pal[i]);
+		int l = 40 + ((c.r * 77 + c.g * 150 + c.b * 29) >> 8) * 215 / 255;
+		struct rgb a = {l, l * 72 / 100, l * 24 / 100};
+
+		ring_pal_amber[i] = to565(&a);
+	}
 	ipm_register_callback(ipm, on_ipm, NULL);
 	ipm_set_enabled(ipm, 1);
 	if (!device_is_ready(disp)) {
@@ -1263,6 +1539,10 @@ int main(void)
 		uint32_t t0 = k_cycle_get_32();
 
 		handle_buttons();
+		if (face == FACE_REMOTE) {
+			remote_frame();
+			continue;
+		}
 		if (base_ms < 0 && k_uptime_get() - hello_ms > 1000) {
 			hello_ms = k_uptime_get(); /* no time yet: ask core 0 (again) */
 			ipm_send(ipm, 0, MSG_HELLO, NULL, 0);

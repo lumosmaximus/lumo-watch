@@ -16,11 +16,26 @@
 #define MSG_BENCH 4 /* core 1 -> core 0: startup micro-benchmark, cycles per pixel x10 */
 #define MSG_BUTTON 5 /* core 0 -> core 1: a button event */
 #define MSG_HELLO  6 /* core 1 -> core 0: ready, please send the time */
+#define MSG_KEY    7 /* core 1 -> core 0: send a media key to the computer (USB HID) */
+
+enum {
+	KEY_VOL_UP = 1,
+	KEY_VOL_DOWN,
+	KEY_MUTE,
+	KEY_PLAY_PAUSE,
+	KEY_BRIGHT_UP,
+	KEY_BRIGHT_DOWN,
+};
+
+struct msg_key {
+	uint8_t key;
+};
 
 enum {
 	BTN_PWR = 1,       /* PWR pressed */
 	BTN_BOOT = 2,      /* BOOT pressed and released within 3 s */
 	BTN_BOOT_LONG = 3, /* BOOT held for 3 s (face picker) */
+	BTN_TWO_HOLD = 4,  /* two fingers held on the screen for 1.5 s (remote) */
 };
 
 struct msg_button {
@@ -55,6 +70,7 @@ struct msg_stats {
 struct msg_touch {
 	uint16_t x, y;
 	uint8_t down;
+	uint8_t fingers;
 };
 
 #endif

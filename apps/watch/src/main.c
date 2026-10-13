@@ -30,6 +30,7 @@
 #include <zephyr/kernel.h>
 
 #include "../common/watch_msg.h"
+#include "usb_hid.h"
 
 static const struct device *const ipm = DEVICE_DT_GET(DT_NODELABEL(ipm0));
 static const struct device *const rtc = DEVICE_DT_GET(DT_ALIAS(rtc));
@@ -58,6 +59,10 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 		       mb.compute % 10);
 		printk("core 1 bench: render_box dial only %u.%u, with hands %u.%u cycles/px\n",
 		       mb.box_plain / 10, mb.box_plain % 10, mb.box_hands / 10, mb.box_hands % 10);
+		return;
+	}
+	if (id == MSG_KEY) {
+		usb_key(((volatile struct msg_key *)data)->key);
 		return;
 	}
 	if (id == MSG_HELLO) {
@@ -104,14 +109,47 @@ static void on_input(struct input_event *evt, void *user_data)
 		return;
 	}
 
+	if (evt->code == INPUT_ABS_MT_SLOT) {
+		t.fingers = evt->value;
+		return;
+	}
 	if (evt->code == INPUT_ABS_X) {
 		t.x = evt->value;
 	} else if (evt->code == INPUT_ABS_Y) {
 		t.y = evt->value;
 	} else if (evt->code == INPUT_BTN_TOUCH) {
 		t.down = evt->value;
+		if (!t.down) {
+			t.fingers = 0;
+		}
 	}
 	if (evt->sync) {
+		/* Open/close the remote, once per hold: two fingers held 1.5 s, or one
+		 * finger held still 2 s near the middle (away from the bezel)
+		 */
+		static int64_t hold_since;
+		static bool hold_sent, hold_two;
+		static int hx, hy;
+		int dx = t.x - 233, dy = t.y - 233;
+		bool middle = dx * dx + dy * dy < 120 * 120;
+
+		if (t.down && (t.fingers >= 2 || middle)) {
+			int mx = t.x - hx, my = t.y - hy;
+
+			if (!hold_since || (t.fingers < 2 && !hold_two && mx * mx + my * my > 20 * 20)) {
+				hold_since = k_uptime_get(); /* (re)start: moved too far */
+				hx = t.x;
+				hy = t.y;
+			}
+			hold_two |= t.fingers >= 2;
+			if (!hold_sent && k_uptime_get() - hold_since > (hold_two ? 1500 : 2000)) {
+				hold_sent = true;
+				send_button(BTN_TWO_HOLD);
+			}
+		} else if (!t.down) {
+			hold_since = 0;
+			hold_sent = hold_two = false;
+		}
 		ipm_send(ipm, -1, MSG_TOUCH, &t, sizeof(t));
 	}
 }
@@ -193,6 +231,15 @@ static void console_rx(void *a, void *b, void *c)
 		}
 		line[n] = 0;
 		n = 0;
+		if (line[0] == 'B' && line[1] == 0) {
+			printk("rebooting to download mode\n");
+			usb_reboot_to_download();
+		}
+		if (line[0] == 'K' && line[1] >= '1' && line[1] <= '6') { /* test: send a key */
+			usb_key(line[1] - '0');
+			printk("key %c sent\n", line[1]);
+			continue;
+		}
 		int y, mo, d, h, mi, s;
 
 		if (sscanf(line, "T %d-%d-%d %d:%d:%d", &y, &mo, &d, &h, &mi, &s) != 6) {
@@ -236,7 +283,10 @@ int main(void)
 {
 	struct rtc_time t;
 
-	printk("\n*** watch: core 0 ***\n");
+	int uerr = usb_start();
+
+	k_msleep(1500); /* let the host open the serial port */
+	printk("\n*** watch: core 0 *** (usb %d)\n", uerr);
 	/* the panel's tearing-effect pin; core 1 polls it to pace its frames */
 	gpio_pin_configure(DEVICE_DT_GET(DT_NODELABEL(gpio0)), 13, GPIO_INPUT);
 	ipm_register_callback(ipm, on_ipm, NULL);
