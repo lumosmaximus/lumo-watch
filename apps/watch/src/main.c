@@ -78,8 +78,9 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 static void send_button(uint8_t btn)
 {
 	struct msg_button mb = {.btn = btn};
+	int ret = msg_send(ipm, MSG_BUTTON, &mb, sizeof(mb));
 
-	ipm_send(ipm, -1, MSG_BUTTON, &mb, sizeof(mb));
+	printk("button %u -> core 1 (%d)\n", btn, ret);
 }
 
 /* BOOT held for 3 s: fires once while still held */
@@ -136,6 +137,14 @@ static void on_input(struct input_event *evt, void *user_data)
 		if (t.down && (t.fingers >= 2 || middle)) {
 			int mx = t.x - hx, my = t.y - hy;
 
+			static int64_t last_dbg;
+
+			if (k_uptime_get() - last_dbg > 500) { /* debug: the hold, twice a second */
+				last_dbg = k_uptime_get();
+				printk("hold: %lld ms, fingers %u, at %u,%u, moved %d\n",
+				       hold_since ? k_uptime_get() - hold_since : 0, t.fingers, t.x, t.y,
+				       mx * mx + my * my);
+			}
 			if (!hold_since || (t.fingers < 2 && !hold_two && mx * mx + my * my > 20 * 20)) {
 				hold_since = k_uptime_get(); /* (re)start: moved too far */
 				hx = t.x;
@@ -150,7 +159,7 @@ static void on_input(struct input_event *evt, void *user_data)
 			hold_since = 0;
 			hold_sent = hold_two = false;
 		}
-		ipm_send(ipm, -1, MSG_TOUCH, &t, sizeof(t));
+		msg_send(ipm, MSG_TOUCH, &t, sizeof(t));
 		/* log touches (down/up and finger-count changes) */
 		static uint8_t last_down, last_fingers;
 
@@ -204,7 +213,7 @@ static void send_time_on_edge(void)
 			      .hour = b.tm_hour, .min = b.tm_min, .sec = b.tm_sec,
 			      .wday = b.tm_wday};
 
-	ipm_send(ipm, -1, MSG_TIME, &mt, sizeof(mt));
+	msg_send(ipm, MSG_TIME, &mt, sizeof(mt));
 	printk("time -> core 1: %04u-%02u-%02u %02u:%02u:%02u\n", mt.year, mt.month, mt.day,
 	       mt.hour, mt.min, mt.sec);
 }

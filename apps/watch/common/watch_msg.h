@@ -75,4 +75,27 @@ struct msg_touch {
 	uint8_t fingers;
 };
 
+/* The ESP32 IPM driver has one mailbox per direction and does not wait for
+ * the other core to read a message: a second send right after the first
+ * overwrites it (that lost the remote's open/close message, sent just before
+ * a touch update). msg_send() sends one message at a time and gives the other
+ * core's interrupt time to copy it out before the next.
+ */
+#include <zephyr/drivers/ipm.h>
+#include <zephyr/kernel.h>
+
+#define MSG_SEND_GAP_US 200
+
+static inline int msg_send(const struct device *ipm, uint32_t id, const void *data, int size)
+{
+	static K_MUTEX_DEFINE(msg_lock);
+	int ret;
+
+	k_mutex_lock(&msg_lock, K_FOREVER);
+	ret = ipm_send(ipm, -1, id, data, size);
+	k_busy_wait(MSG_SEND_GAP_US);
+	k_mutex_unlock(&msg_lock);
+	return ret;
+}
+
 #endif

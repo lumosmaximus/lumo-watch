@@ -5,9 +5,9 @@
 watch.py export): an unwrapped strip [ANG][RAD] of 8-bit palette indices plus
 a 256-colour palette, so core 1 draws and turns it with the bezel's lookup.
 
-Knurled dark steel outside, a scale inside (a tick per click, a long one per
-key),
-and a glowing marker that shows how far the knob has turned.
+A pastel rainbow "candy" ring with a round bump per key step and a white dot
+per click,
+and a white marker that shows how far the knob has turned.
 
     uv run knob.py preview          -> knob_preview.png
     uv run knob.py export [dir]     -> knob_img.c / knob_img.h
@@ -26,43 +26,46 @@ RAD = BEZEL_OUT - R0 + 1
 KNOB_CLICK_DEG = 3                     # the knob turns in clicks this size ...
 KNOB_KEY_DEG = 15                      # ... and sends one key per this much (iPod-like:
                                        # a couple of turns from silent to full)
-UNDER_IN = (14, 14, 16)                # the remote's background, inside the ring
+UNDER_IN = (30, 18, 40)                # the remote's background, inside the ring
+
+
+def hsv(h, sat, val):
+    """h in turns -> RGB 0..255"""
+    import colorsys
+    return [int(255 * c) for c in colorsys.hsv_to_rgb(h % 1.0, sat, val)]
 
 
 def knob(theta, r):
-    """Colour at clock angle theta (degrees) and radius r (pixels)."""
-    if r < 193:                                      # inner bevel
-        return (40, 44, 52)
-    if r < 208:                                      # scale band
-        col = [16, 17, 21]
-        step, key = KNOB_CLICK_DEG, KNOB_KEY_DEG
-        d = abs(((theta + step / 2) % step) - step / 2) * math.pi / 180 * r
-        dk = abs(((theta + key / 2) % key) - key / 2) * math.pi / 180 * r
-        if dk < 2.5:                                 # key tick: cyan, long
-            a = max(0.0, min(1.0, 0.5 - (dk - 1.0))) if 195 <= r <= 206.5 else 0
-            ink = (90, 215, 255)
-        else:                                        # click tick: grey, short
-            a = max(0.0, min(1.0, 0.5 - (d - 0.55))) if 198 <= r <= 203.5 else 0
-            ink = (150, 156, 168)
-        return tuple(int(c + (v - c) * a) for c, v in zip(col, ink))
-    if r < 210.5:                                    # cyan glow line
-        g = 1 - abs(r - 209.2) / 1.4
-        return (int(30 + 60 * g), int(90 + 125 * g), int(120 + 135 * g))
-    # knurled dark steel: a strong specular band, fine ridges, rounded edge
-    spec = math.cos(math.radians(theta - 315))       # light from the top left
-    lum = 46 + 30 * max(0.0, spec) ** 3 * 2 + 14 * math.cos(math.radians(2 * (theta - 40)))
-    ridge = 0.5 + 0.5 * math.cos(2 * math.pi * theta / 1.5)
-    lum *= 0.70 + 0.50 * ridge
-    lum *= 1.0 - 0.45 * ((r - 221.5) / 11.5) ** 2
-    col = [lum * 0.94, lum * 0.98, lum * 1.08]
-    # the marker: a glowing cyan pill at 12 o'clock (turns with the knob)
+    """Colour at clock angle theta (degrees) and radius r (pixels): a pastel
+    rainbow candy knob with a round bump per key step."""
+    if r < 193:                                      # soft inner rim
+        return (54, 34, 66)
+    key = KNOB_KEY_DEG
+    # scalloped edge: the ring's inner edge bulges into a bump per key step
+    ph = ((theta + key / 2) % key) / key - 0.5      # -0.5..0.5 across a step
+    inner = 204 - 7 * (1 - (2 * ph) ** 2) ** 0.5     # round bump, deepest mid-step
+    if r < inner:
+        return (UNDER_IN[0], UNDER_IN[1], UNDER_IN[2])
+    base = hsv(theta / 360, 0.50, 1.0)               # pastel rainbow
+    # gentle 3D: a soft highlight top-left, a little darker at the outer edge
+    shade = 0.90 + 0.10 * math.cos(math.radians(theta - 315))
+    shade *= 1.0 - 0.18 * max(0.0, (r - 222) / 11) ** 2
+    # each bump slightly lighter in its middle, like a jelly bean
+    shade *= 1.0 + 0.10 * (1 - (2 * ph) ** 2) * max(0.0, 1 - (r - inner) / 12)
+    col = [c * shade for c in base]
+    # a white dot per click, small, near the inner edge
+    step = KNOB_CLICK_DEG
+    d = abs(((theta + step / 2) % step) - step / 2) * math.pi / 180 * r
+    if abs(r - 215) < 2.6:
+        dot = max(0.0, min(1.0, 0.5 - (math.hypot(d, r - 215) - 1.3)))
+        col = [c + (255 - c) * dot * 0.85 for c in col]
+    # the marker: a white disc with a soft plum ring, at 12 o'clock
     dx = math.radians(((theta + 180) % 360) - 180) * r
-    dy = max(0.0, abs(r - 221.5) - 4.5)              # pill: 9 px long radially
-    dist = math.hypot(dx, dy)
-    glow = max(0.0, 1 - dist / 10) ** 2
-    core = max(0.0, min(1.0, 0.5 - (dist - 2.6)))
-    for i, v in enumerate((90, 220, 255)):
-        col[i] = col[i] + (v - col[i]) * max(core, glow * 0.75)
+    dist = math.hypot(dx, r - 222)
+    ring = max(0.0, min(1.0, 0.5 - (dist - 7.2)))
+    core = max(0.0, min(1.0, 0.5 - (dist - 5.5)))
+    col = [c + (90 - c) * ring for c in col]
+    col = [c + (255 - c) * core for c in col]
     return tuple(int(max(0, min(255, c))) for c in col)
 
 
