@@ -43,7 +43,7 @@ set r to \"-1\"
 repeat with w in windows
 	repeat with t in tabs of w
 		if URL of t contains \"youtube.com\" then
-			set x to execute t javascript " & quoted form of js & "
+			set x to execute t javascript \"" & js & "\"
 			if x is \"1\" then return \"1\"
 			if x is \"0\" then set r to \"0\"
 		end if
