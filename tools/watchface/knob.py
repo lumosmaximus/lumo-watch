@@ -5,7 +5,7 @@
 watch.py export): an unwrapped strip [ANG][RAD] of 8-bit palette indices plus
 a 256-colour palette, so core 1 draws and turns it with the bezel's lookup.
 
-A pastel rainbow "candy" ring with a round bump per key step and a white dot
+A smooth pastel rainbow ring with a white dot
 per click,
 and a white marker that shows how far the knob has turned.
 
@@ -37,21 +37,18 @@ def hsv(h, sat, val):
 
 def knob(theta, r):
     """Colour at clock angle theta (degrees) and radius r (pixels): a pastel
-    rainbow candy knob with a round bump per key step."""
+    rainbow knob with a white dot per click."""
     if r < 193:                                      # soft inner rim
         return (54, 34, 66)
-    key = KNOB_KEY_DEG
-    # scalloped edge: the ring's inner edge bulges into a bump per key step
-    ph = ((theta + key / 2) % key) / key - 0.5      # -0.5..0.5 across a step
-    inner = 204 - 7 * (1 - (2 * ph) ** 2) ** 0.5     # round bump, deepest mid-step
+    inner = 199                                      # a smooth inner edge
     if r < inner:
         return (UNDER_IN[0], UNDER_IN[1], UNDER_IN[2])
     base = hsv(theta / 360, 0.50, 1.0)               # pastel rainbow
     # gentle 3D: a soft highlight top-left, a little darker at the outer edge
     shade = 0.90 + 0.10 * math.cos(math.radians(theta - 315))
     shade *= 1.0 - 0.18 * max(0.0, (r - 222) / 11) ** 2
-    # each bump slightly lighter in its middle, like a jelly bean
-    shade *= 1.0 + 0.10 * (1 - (2 * ph) ** 2) * max(0.0, 1 - (r - inner) / 12)
+    # a soft lighter lip along the inner edge
+    shade *= 1.0 + 0.12 * max(0.0, 1 - (r - inner) / 4)
     col = [c * shade for c in base]
     # a white dot per click, small, near the inner edge
     step = KNOB_CLICK_DEG
