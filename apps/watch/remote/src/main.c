@@ -1069,6 +1069,7 @@ static const struct {
 static uint16_t knob_pal[256], knob_pal_amber[256];
 static bool rm_bright, rm_active, rm_drag, rm_moved;
 static bool rm_muted; /* our own idea: mute toggles it, a volume key clears it */
+static bool rm_playing; /* likewise: play/pause toggles it (starts as paused) */
 static float rm_pos;  /* knob angle, 0.1 degree, unwrapped */
 static int rm_pressed = -1;
 static int64_t rm_last_touch, rm_t0, rm_press_until;
@@ -1080,8 +1081,11 @@ static int rm_x0, rm_y0, rm_prev_face = BOOT_FACE;
 static float rm_icon(int b, float X, float Y)
 {
 	switch (b) {
-	case RB_PLAY:
-		return fmx(tri(X, Y, -22, -3, 14), fmx(bar(X, Y, 4, 10, 14), bar(X, Y, 14, 20, 14)));
+	case RB_PLAY: /* shows what a tap does: pause while playing, play while paused */
+		if (rm_playing) {
+			return fmx(bar(X, Y, -11, -3.5f, 15), bar(X, Y, 3.5f, 11, 15));
+		}
+		return tri(X, Y, -10, 16, 17);
 	case RB_PREV: /* |<< */
 		return fmx(bar(X, Y, -12, -9.5f, 8), fmx(tri(-X, Y, -1, 9, 8), tri(-X, Y, -11, -1, 8)));
 	case RB_NEXT: /* >>| */
@@ -1395,6 +1399,9 @@ static void remote_frame(void)
 							    CX + MUTED_Y0 + MUTED_H);
 					} else {
 						remote_key(rm_btn[b].key);
+						if (b == RB_PLAY) {
+							rm_playing = !rm_playing;
+						}
 						rm_pressed = b;
 						rm_press_until = now + 150;
 						render_button(b);
@@ -1562,6 +1569,8 @@ static void handle_buttons(void)
 		if (face == FACE_REMOTE) {
 			if (btn == BTN_PWR) {
 				remote_key(KEY_PLAY_PAUSE);
+				rm_playing = !rm_playing;
+				render_button(RB_PLAY);
 			} else if (btn == BTN_BOOT) {
 				remote_set_mode(!rm_bright);
 			}
