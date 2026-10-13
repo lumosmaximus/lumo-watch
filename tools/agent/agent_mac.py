@@ -21,6 +21,7 @@ allow controlling the browser / Music / Spotify.
 import ctypes
 import ctypes.util
 import glob
+import re
 import subprocess
 import sys
 import threading
@@ -33,9 +34,10 @@ set s to get volume settings
 set p to "-1"
 -- YouTube (or any page with a video) in Chrome or Edge: needs
 -- View > Developer > Allow JavaScript from Apple Events in that browser
-set js to "(()=>{const v=[...document.querySelectorAll('video')];if(!v.length)return '-1';return v.some(x=>!x.paused&&!x.ended)?'1':'0'})()"
+-- returns "-1", or play state, title and channel separated by character 31
+set js to "(()=>{const v=[...document.querySelectorAll('video')];if(!v.length)return '-1';const p=v.some(x=>!x.paused&&!x.ended)?'1':'0';const S=String.fromCharCode(31);const t=document.title.replace(/ - YouTube$/,'');const c=document.querySelector('ytd-video-owner-renderer #channel-name a')||document.querySelector('#owner #channel-name a');return p+S+t+S+(c?c.textContent.trim():'')})()"
 repeat with browser_name in {"Google Chrome", "Microsoft Edge"}
-	if p is not "1" then
+	if p does not start with "1" then
 		try
 			if application browser_name is running then
 				set q to "tell application \"" & browser_name & "\"
@@ -44,8 +46,8 @@ repeat with w in windows
 	repeat with t in tabs of w
 		if URL of t contains \"youtube.com\" then
 			set x to execute t javascript \"" & js & "\"
-			if x is \"1\" then return \"1\"
-			if x is \"0\" then set r to \"0\"
+			if x starts with \"1\" then return x
+			if x starts with \"0\" and r is \"-1\" then set r to x
 		end if
 	end repeat
 end repeat
@@ -62,11 +64,13 @@ repeat with app_name in {"Spotify", "Music"}
 		try
 			if application app_name is running then
 				-- compiled only now, so a missing app is not a script error
+				set sep to character id 31
 				set ps to run script "tell application \"" & app_name & "\" to return (player state as string)"
+				set info to run script "tell application \"" & app_name & "\" to return (name of current track) & (character id 31) & (artist of current track)"
 				if ps is "playing" then
-					set p to "1"
+					set p to "1" & sep & info
 				else
-					set p to "0"
+					set p to "0" & sep & info
 				end if
 			end if
 		end try
@@ -93,10 +97,50 @@ def brightness():
 
 
 def media():
+    """(volume, muted, playing or -1, title, artist)"""
     out = subprocess.run(["osascript", "-e", SCRIPT], capture_output=True, text=True,
-                         timeout=3).stdout.strip()
-    vol, muted, play = out.split(",")
-    return int(vol), 1 if muted == "true" else 0, int(play)
+                         timeout=4).stdout.strip()
+    vol, muted, rest = out.split(",", 2)
+    fields = rest.split("\x1f") + ["", ""]
+    title = re.sub(r"^\(\d+\)\s+", "", fields[1])  # YouTube's "(31) " notification count
+    return int(vol), 1 if muted == "true" else 0, int(fields[0]), title, fields[2]
+
+
+# ---- now playing text: drawn here, sent as a small 2-bit alpha image ----------------
+TEXT_W, TEXT_H = 224, 40        # must match the watch (RM_TEXT_W/H)
+FONT = "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"
+
+
+def fit(draw, txt, font, width):
+    if draw.textlength(txt, font=font) <= width:
+        return txt
+    while txt and draw.textlength(txt + "\u2026", font=font) > width:
+        txt = txt[:-1]
+    return txt.rstrip() + "\u2026"
+
+
+def text_image(title, artist):
+    """Title (row 0-21) and artist (row 22-39), centred, 4 alpha levels, packed
+    4 pixels per byte (first pixel in the top bits)."""
+    from PIL import Image, ImageDraw, ImageFont
+    ss = 3
+    img = Image.new("L", (TEXT_W * ss, TEXT_H * ss), 0)
+    d = ImageDraw.Draw(img)
+    f1 = ImageFont.truetype(FONT, 16 * ss)
+    f2 = ImageFont.truetype(FONT, 13 * ss)
+    d.text((TEXT_W * ss / 2, 11 * ss), fit(d, title, f1, (TEXT_W - 4) * ss), font=f1,
+           fill=255, anchor="mm")
+    d.text((TEXT_W * ss / 2, 31 * ss), fit(d, artist, f2, (TEXT_W - 4) * ss), font=f2,
+           fill=255, anchor="mm")
+    img = img.resize((TEXT_W, TEXT_H), Image.LANCZOS)
+    px = img.tobytes()
+    out = bytearray()
+    for i in range(0, len(px), 4):
+        b = 0
+        for k in range(4):
+            b = (b << 2) | min(3, (px[i + k] + 42) // 85)
+        out.append(b)
+    return bytes(out)
 
 
 def port():
@@ -125,14 +169,24 @@ def main():
     s = port()
     threading.Thread(target=drain, args=(s,), daemon=True).start()
     last = None
+    last_text, text_sent = None, 0
     while True:
         try:
-            v, m, p = media()
+            v, m, p, title, artist = media()
             line = f"S v={v} m={m} b={brightness()} p={p}\n"
             s.write(line.encode())
             if line != last:
                 print(line.strip())
                 last = line
+            # the now-playing text: when it changes, and every 5 s (the watch
+            # may have restarted)
+            text = (title, artist)
+            if text != last_text or time.time() - text_sent > 5:
+                import base64
+                s.write(b"N " + base64.b64encode(text_image(title, artist)) + b"\n")
+                if text != last_text:
+                    print("now playing:", title, "-", artist)
+                last_text, text_sent = text, time.time()
         except (serial.SerialException, OSError):
             print("watch gone, waiting...")
             s = port()

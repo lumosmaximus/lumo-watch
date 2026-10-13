@@ -74,6 +74,10 @@ static volatile bool touch_new;
 static volatile struct msg_state host = {-1, -1, -1, -1};
 static volatile int64_t host_ms = -100000;
 static volatile bool host_new;
+/* now-playing text (title, artist) drawn by the helper app: 2-bit alpha */
+static uint8_t np_img[TEXT_BYTES];
+static volatile int64_t np_ms = -100000;
+static volatile bool np_new;
 
 static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volatile void *data)
 {
@@ -83,6 +87,10 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 	} else if (id == MSG_TOUCH) {
 		memcpy((void *)&touch, (const void *)data, sizeof(touch));
 		touch_new = true;
+	} else if (id == MSG_TEXT) {
+		memcpy(np_img, (const void *)data, sizeof(np_img));
+		np_ms = k_uptime_get();
+		np_new = true;
 	} else if (id == MSG_STATE) {
 		memcpy((void *)&host, (const void *)data, sizeof(host));
 		host_ms = k_uptime_get();
@@ -1073,12 +1081,16 @@ static const struct {
 	[RB_MUTE] = {0, -104, 28, KEY_MUTE, 130, 225, 195},     /* mint */
 	[RB_PREV] = {-104, 0, 28, KEY_PREV, 178, 160, 255},     /* lavender */
 	[RB_NEXT] = {104, 0, 28, KEY_NEXT, 178, 160, 255},
-	[RB_SUN] = {0, 104, 28, 0, 255, 212, 110},              /* sunny */
+	[RB_SUN] = {0, 148, 22, 0, 255, 212, 110},              /* sunny */
 };
 #define ICON_R 62 /* icons: dark plum on the pastel buttons */
 #define ICON_G 28
 #define ICON_B 72
 static struct rgb rm_vis_col[40]; /* a rainbow, one colour per visualiser bar */
+/* the now-playing text, below the play button (from the middle) */
+#define RM_TEXT_X0 (-TEXT_W / 2)
+#define RM_TEXT_Y0 80
+static bool rm_text_on;
 
 static uint16_t knob_pal[256], knob_pal_amber[256];
 static bool rm_bright, rm_active, rm_drag, rm_moved;
@@ -1261,6 +1273,22 @@ static uint16_t remote_px(float X, float Y)
 		float ic = rm_icon(b, bx, by);
 
 		over(&c, ICON_R, ICON_G, ICON_B, (int)(ic * 255));
+		return to565(&c);
+	}
+	/* now playing: title (white) and artist (pink) */
+	if (rm_text_on && Y >= RM_TEXT_Y0 && Y < RM_TEXT_Y0 + TEXT_H && X >= RM_TEXT_X0 &&
+	    X < RM_TEXT_X0 + TEXT_W) {
+		int tx = (int)(X - RM_TEXT_X0), ty = (int)(Y - RM_TEXT_Y0);
+		int i = ty * TEXT_W + tx;
+		int a = (np_img[i >> 2] >> (6 - 2 * (i & 3))) & 3;
+
+		if (a) {
+			if (ty < 22) {
+				over(&c, 255, 255, 255, a * 85);
+			} else {
+				over(&c, 255, 176, 214, a * 85);
+			}
+		}
 		return to565(&c);
 	}
 	/* the level meter: 60 small bars from 12 o'clock clockwise, lit up to the
@@ -1465,6 +1493,15 @@ static void remote_frame(void)
 			rm_playing = host.playing;
 			render_button(RB_PLAY);
 		}
+	}
+	/* now playing: show the text while the helper keeps sending it */
+	bool text_on = now - np_ms < 12000;
+
+	if (np_new || text_on != rm_text_on) {
+		np_new = false;
+		rm_text_on = text_on;
+		render_rect(CX + RM_TEXT_X0, CX + RM_TEXT_Y0, CX + RM_TEXT_X0 + TEXT_W - 1,
+			    CX + RM_TEXT_Y0 + TEXT_H - 1);
 	}
 	int lv = rm_level_now();
 

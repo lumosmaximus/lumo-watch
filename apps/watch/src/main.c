@@ -26,6 +26,7 @@
 #include <zephyr/drivers/ipm.h>
 #include <zephyr/drivers/rtc.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/sys/base64.h>
 #include <zephyr/input/input.h>
 #include <zephyr/kernel.h>
 
@@ -231,7 +232,7 @@ static int weekday(int y, int m, int d)
 static void console_rx(void *a, void *b, void *c)
 {
 	const struct device *con = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
-	char line[128];
+	static char line[3200]; /* "N <base64 text image>" is the longest */
 	size_t n = 0;
 
 	while (1) {
@@ -252,6 +253,16 @@ static void console_rx(void *a, void *b, void *c)
 		if (line[0] == 'B' && line[1] == 0) {
 			printk("rebooting to download mode\n");
 			usb_reboot_to_download();
+		}
+		if (line[0] == 'N' && line[1] == ' ') { /* now-playing text image, base64 */
+			static uint8_t img[TEXT_BYTES + 4];
+			size_t olen = 0;
+
+			if (base64_decode(img, sizeof(img), &olen, (const uint8_t *)line + 2,
+					  strlen(line + 2)) == 0 && olen == TEXT_BYTES) {
+				msg_send(ipm, MSG_TEXT, img, TEXT_BYTES);
+			}
+			continue;
 		}
 		if (line[0] == 'S' && line[1] == ' ') { /* "S v=37 m=0 b=80 p=1" from tools/agent */
 			struct msg_state st = {-1, -1, -1, -1};

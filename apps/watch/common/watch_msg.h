@@ -18,6 +18,10 @@
 #define MSG_HELLO  6 /* core 1 -> core 0: ready, please send the time */
 #define MSG_KEY    7 /* core 1 -> core 0: send a media key to the computer (USB HID) */
 #define MSG_STATE  8 /* core 0 -> core 1: the computer's media state (tools/agent) */
+#define MSG_TEXT   9 /* core 0 -> core 1: now-playing text, a 2-bit alpha image */
+#define TEXT_W     224 /* title rows 0-21, artist rows 22-39; 4 pixels per byte */
+#define TEXT_H     40
+#define TEXT_BYTES (TEXT_W * TEXT_H / 4)
 
 /* fields set to -1 are unknown (the helper could not read them) */
 struct msg_state {
