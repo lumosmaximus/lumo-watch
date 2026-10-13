@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.9"
+# dependencies = ["pyserial", "pillow"]
+# ///
 # Copyright (c) 2026 Adi Nandanamudi
 # SPDX-License-Identifier: Apache-2.0
 """Tell the watch what the Mac is doing, so its remote stays in sync.
 
-    uv run --with pyserial tools/agent/agent_mac.py
+    uv run tools/agent/agent_mac.py       (uv installs pyserial and pillow)
 
 Every 0.4 s it sends one line over the watch's USB serial port:
     S v=<volume 0-100> m=<muted 0/1> b=<brightness 0-100 or -1> p=<playing 0/1 or -1>
@@ -205,12 +209,17 @@ def main():
             cur = lines[0]
             now = time.time()
             if cur and (cur[0].moving or cur[1].moving or cur is not sent or now - sent_t > 5):
+                try:
                 data = pack(cur[0].frame(now), cur[1].frame(now))
+            except Exception as e:
+                print("text drawing failed:", e, file=sys.stderr)
+                time.sleep(2)
+                continue
                 try:
                     with lock:
                         s.write(b"N " + base64.b64encode(data) + b"\n")
-                except Exception:
-                    pass
+                except Exception as e:
+                    print("text send failed:", e, file=sys.stderr)
                 sent, sent_t = cur, now
             time.sleep(0.08)
 
