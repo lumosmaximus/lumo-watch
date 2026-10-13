@@ -100,14 +100,39 @@ def brightness():
     return int(round(b.value * 100))
 
 
+VOLUME_SCRIPT = ('set s to get volume settings\n'
+                 'return ((output volume of s) as text) & "," & ((output muted of s) as text)')
+# the play-state part of SCRIPT on its own: the browser can be slow to answer
+PLAY_SCRIPT = SCRIPT.replace("set s to get volume settings\n", "", 1).rsplit("return", 1)[0] + "return p"
+
+play_info = [-1, "", ""]  # playing (or -1), title, artist: updated by play_loop
+
+
+def play_loop():
+    """Ask the browser / music apps, in the background with a time limit, so a
+    tab that does not answer (asleep, or a permission prompt) cannot hold up
+    the volume updates."""
+    while True:
+        try:
+            out = subprocess.run(["osascript", "-e", PLAY_SCRIPT], capture_output=True,
+                                 text=True, timeout=3).stdout.strip()
+            fields = out.split("\x1f") + ["", ""]
+            title = re.sub(r"^\(\d+\)\s+", "", fields[1])  # YouTube's "(31) " count
+            play_info[:] = [int(fields[0] or -1), title, fields[2]]
+        except subprocess.TimeoutExpired:
+            print("browser did not answer in 3 s (tab asleep, or a permission prompt?)",
+                  file=sys.stderr)
+        except Exception as e:
+            print("play state failed:", e, file=sys.stderr)
+        time.sleep(0.5)
+
+
 def media():
     """(volume, muted, playing or -1, title, artist)"""
-    out = subprocess.run(["osascript", "-e", SCRIPT], capture_output=True, text=True,
-                         timeout=4).stdout.strip()
-    vol, muted, rest = out.split(",", 2)
-    fields = rest.split("\x1f") + ["", ""]
-    title = re.sub(r"^\(\d+\)\s+", "", fields[1])  # YouTube's "(31) " notification count
-    return int(vol), 1 if muted == "true" else 0, int(fields[0]), title, fields[2]
+    out = subprocess.run(["osascript", "-e", VOLUME_SCRIPT], capture_output=True, text=True,
+                         timeout=2).stdout.strip()
+    vol, muted = out.split(",")
+    return int(vol), 1 if muted == "true" else 0, play_info[0], play_info[1], play_info[2]
 
 
 # ---- now playing text: drawn here, sent as a small 2-bit alpha image ----------------
@@ -210,11 +235,11 @@ def main():
             now = time.time()
             if cur and (cur[0].moving or cur[1].moving or cur is not sent or now - sent_t > 5):
                 try:
-                data = pack(cur[0].frame(now), cur[1].frame(now))
-            except Exception as e:
-                print("text drawing failed:", e, file=sys.stderr)
-                time.sleep(2)
-                continue
+                    data = pack(cur[0].frame(now), cur[1].frame(now))
+                except Exception as e:
+                    print("text drawing failed:", e, file=sys.stderr)
+                    time.sleep(2)
+                    continue
                 try:
                     with lock:
                         s.write(b"N " + base64.b64encode(data) + b"\n")
@@ -224,6 +249,7 @@ def main():
             time.sleep(0.08)
 
     threading.Thread(target=text_loop, daemon=True).start()
+    threading.Thread(target=play_loop, daemon=True).start()
     text = None
     while True:
         try:
