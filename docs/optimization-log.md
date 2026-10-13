@@ -231,6 +231,56 @@ and for that it had to shrink:
 Result: **14.0 ms** per click (ring 5.6, swap 3.1, bg 1.5, write mostly
 overlapped). Core 1's RAM is now 93% used.
 
+## 14. The watch becomes a USB media remote
+
+Core 0 now runs the chip's USB OTG controller as its own composite device:
+a CDC-ACM serial port (the console) and HID Consumer Control (volume, mute,
+play/pause, next/previous, display brightness). Windows and macOS act on
+those keys with no driver or app. Core 1 draws the remote: the bezel's polar
+lookup reused for a knob ring that follows the finger in 0.25 degree steps
+and sends one key per 15 degrees (a couple of turns from silent to full,
+like an iPod wheel).
+
+Things that bit:
+
+- **One USB port, two jobs.** The OTG controller and the built-in
+  USB-Serial-JTAG share the PHY: with our device running, the flashing port
+  is gone. `west flash` writes core 0's image, resets, and the new firmware
+  takes the port before core 1's image is written. Fix: a console command
+  that reboots into the ROM's download mode, and `tools/flash.sh` writing
+  both images in one esptool run.
+- **macOS asks to identify every keyboard.** A keyboard report (for F14/F15
+  brightness) opened the Keyboard Setup Assistant on each plug-in; brightness
+  now goes as Consumer usages only.
+- **Messages between the cores went missing.** The ESP32 IPM driver has one
+  mailbox per direction and does not wait for the other core to read it: a
+  second send overwrites the first. The "open the remote" message, sent a few
+  microseconds before a touch update, was overwritten almost every time;
+  BOOT presses (sent alone) always worked. Now one sender at a time, with
+  200 us for the other core to copy each message out.
+- **And the mailbox is small.** It takes at most 512 bytes a message; the
+  2240-byte now-playing image was refused ("Not enough memory in IPM
+  channel"). It goes in 480-byte chunks now.
+
+## 15. A helper app for the other direction
+
+HID only goes from the watch to the computer. For the watch to show the real
+volume, mute and play state, and what is playing, a small Python helper
+(`tools/agent/agent_mac.py`) sends a status line over the serial port every
+0.4 s: volume and mute (AppleScript), built-in display brightness
+(DisplayServices), and the play state, title and channel of YouTube tabs in
+Chrome (JavaScript through Apple Events), or Spotify/Music.
+
+The watch has no fonts, and core 1 has no RAM for them, so the helper draws
+the title and artist with Pillow into a 224x40 image at 2 bits per pixel
+(2240 bytes) and sends it; long lines scroll, the helper sending ~12 frames a
+second. Core 0 decodes the base64 line (its USB serial RX FIFO raised from
+1 KB to 4 KB for it) and forwards the image to core 1 in chunks.
+
+Serial is fine for a development tool; for a product the usual choice is a
+vendor-defined HID interface (raw HID): no COM port to find, no drivers, and
+the helper finds the device by its USB id.
+
 ## Concurrency and timing techniques used
 
 - AMP: one core per job, separate images, no shared scheduler.
@@ -244,6 +294,10 @@ overlapped). Core 1's RAM is now 93% used.
   1's uptime.
 - Measurement built in: per-stage cycle counters, a boot-time micro-benchmark,
   SPI underrun counter, on-device self-check of cached pixels.
+- Core-to-core messages serialised, with time for the receiver to copy each
+  one out (the IPM mailbox does not queue).
+- A composite USB device: serial console plus HID, with a host helper for
+  the return path (state and an image of the now-playing text).
 
 ## Where it stands
 
