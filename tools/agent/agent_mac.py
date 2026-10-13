@@ -196,26 +196,38 @@ def pack(title_img, artist_img):
     return bytes(out)
 
 
+WATCH_VID, WATCH_PID = 0x1209, 0x0001  # the watch's own USB device (apps/watch/src/usb_hid.c)
+
+
 def port():
+    """The watch's serial port, by its USB id: never the chip's flashing port
+    (USB-Serial-JTAG, 303a:1001), which shows up under the same name while
+    tools/flash.sh is writing."""
+    from serial.tools import list_ports
     while True:
-        p = glob.glob("/dev/cu.usbmodem*")
-        if p:
-            try:
-                s = serial.Serial(p[0], 115200, timeout=0.2)
-                print("watch on", p[0])
-                return s
-            except serial.SerialException:
-                pass
+        for p in list_ports.comports():
+            if p.vid == WATCH_VID and p.pid == WATCH_PID:
+                try:
+                    s = serial.Serial(p.device, 115200, timeout=0.2)
+                    print("watch on", p.device)
+                    return s
+                except serial.SerialException:
+                    pass
         time.sleep(1)
 
 
 def drain(s):
     """Read (and drop) the watch's console output so its buffer never fills."""
+    buf = b""
     while True:
         try:
-            s.read(4096)
+            buf += s.read(4096)
         except Exception:
             return
+        *done, buf = buf.split(b"\n")
+        for ln in done:
+            if b"text frames" in ln or b"hid key" in ln:
+                print("watch:", ln.decode(errors="replace").strip())
 
 
 def main():

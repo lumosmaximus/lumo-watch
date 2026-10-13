@@ -24,6 +24,8 @@ zephyr_udc0: &usb_otg {
 
 	cdc_acm_uart0: cdc_acm_uart0 {
 		compatible = "zephyr,cdc-acm-uart";
+		/* a now-playing text frame is one ~3 KB line (tools/agent) */
+		rx-fifo-size = <4096>;
 	};
 
 	hid_media: hid_media {

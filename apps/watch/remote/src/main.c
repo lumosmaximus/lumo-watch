@@ -87,10 +87,17 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 	} else if (id == MSG_TOUCH) {
 		memcpy((void *)&touch, (const void *)data, sizeof(touch));
 		touch_new = true;
-	} else if (id == MSG_TEXT) {
-		memcpy(np_img, (const void *)data, sizeof(np_img));
-		np_ms = k_uptime_get();
-		np_new = true;
+	} else if (id == MSG_TEXT) { /* a chunk of the now-playing text image */
+		const volatile struct msg_text *mt = data;
+		uint16_t off = mt->off, len = mt->len;
+
+		if (off + len <= sizeof(np_img)) {
+			memcpy(&np_img[off], (const void *)mt->data, len);
+			if (off + len == sizeof(np_img)) { /* the frame is complete */
+				np_ms = k_uptime_get();
+				np_new = true;
+			}
+		}
 	} else if (id == MSG_STATE) {
 		memcpy((void *)&host, (const void *)data, sizeof(host));
 		host_ms = k_uptime_get();

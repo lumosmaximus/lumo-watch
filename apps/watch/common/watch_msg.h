@@ -23,6 +23,15 @@
 #define TEXT_H     40
 #define TEXT_BYTES (TEXT_W * TEXT_H / 4)
 
+/* The IPM mailbox carries at most 512 bytes a message, so the text image goes
+ * in chunks; the last one (off + len == TEXT_BYTES) completes a frame.
+ */
+#define TEXT_CHUNK 480
+struct msg_text {
+	uint16_t off, len;
+	uint8_t data[TEXT_CHUNK];
+};
+
 /* fields set to -1 are unknown (the helper could not read them) */
 struct msg_state {
 	int8_t volume;     /* 0..100 */

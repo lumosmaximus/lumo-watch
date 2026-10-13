@@ -239,7 +239,7 @@ static void console_rx(void *a, void *b, void *c)
 		unsigned char ch;
 
 		if (uart_poll_in(con, &ch) != 0) {
-			k_msleep(10);
+			k_msleep(1);
 			continue;
 		}
 		if (ch != '\n' && ch != '\r') {
@@ -258,9 +258,27 @@ static void console_rx(void *a, void *b, void *c)
 			static uint8_t img[TEXT_BYTES + 4];
 			size_t olen = 0;
 
+			static uint32_t ok, bad, t_log;
+
 			if (base64_decode(img, sizeof(img), &olen, (const uint8_t *)line + 2,
 					  strlen(line + 2)) == 0 && olen == TEXT_BYTES) {
-				msg_send(ipm, MSG_TEXT, img, TEXT_BYTES);
+				static struct msg_text mt;
+
+				for (uint16_t off = 0; off < TEXT_BYTES; off += TEXT_CHUNK) {
+					mt.off = off;
+					mt.len = MIN(TEXT_CHUNK, TEXT_BYTES - off);
+					memcpy(mt.data, img + off, mt.len);
+					msg_send(ipm, MSG_TEXT, &mt, sizeof(mt) - TEXT_CHUNK + mt.len);
+				}
+				ok++;
+			} else {
+				bad++;
+			}
+			if (k_uptime_get_32() - t_log > 2000) {
+				printk("text frames: %u ok, %u bad (last %u chars)\n", ok, bad,
+				       (unsigned int)strlen(line));
+				ok = bad = 0;
+				t_log = k_uptime_get_32();
 			}
 			continue;
 		}
