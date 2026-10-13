@@ -1,4 +1,9 @@
-# Waveshare ESP32-S3-Touch-AMOLED-1.75 on Zephyr (dual core)
+# lumo-watch
+
+A dual-core Zephyr watch and USB media knob for the Waveshare
+ESP32-S3-Touch-AMOLED-1.75.
+
+## The board
 
 Zephyr board support, drivers and apps for the
 [Waveshare ESP32-S3-Touch-AMOLED-1.75](https://docs.waveshare.com/ESP32-S3-Touch-AMOLED-1.75)
