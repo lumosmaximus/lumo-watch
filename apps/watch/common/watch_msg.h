@@ -15,6 +15,7 @@
 #define MSG_TOUCH 3 /* core 0 -> core 1 */
 #define MSG_BENCH 4 /* core 1 -> core 0: startup micro-benchmark, cycles per pixel x10 */
 #define MSG_BUTTON 5 /* core 0 -> core 1: a button event */
+#define MSG_HELLO  6 /* core 1 -> core 0: ready, please send the time */
 
 enum {
 	BTN_PWR = 1,       /* PWR pressed */

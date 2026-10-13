@@ -5,6 +5,11 @@
  * Watch, core 0 side: owns the RTC, touch and buttons, tells core 1 the time
  * and the button presses, and prints core 1's frame rate.
  *
+ * Time: the RTC has no battery, so it loses the time when unplugged (then the
+ * build time is used). Send the real time over USB with tools/settime.py: a
+ * line "T YYYY-MM-DD HH:MM:SS" on the console sets the RTC. Core 1 says hello
+ * when it is up; the time goes to it then (and every minute after).
+ *
  * Buttons: BOOT (GPIO0, a gpio-keys input) short press, or held 3 s (face
  * picker); PWR read from the I/O expander (EXIO4, high while pressed), whose
  * interrupt line is not wired, so it is polled.
@@ -20,6 +25,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/ipm.h>
 #include <zephyr/drivers/rtc.h>
+#include <zephyr/drivers/uart.h>
 #include <zephyr/input/input.h>
 #include <zephyr/kernel.h>
 
@@ -30,6 +36,7 @@ static const struct device *const rtc = DEVICE_DT_GET(DT_ALIAS(rtc));
 
 static struct msg_stats stats;
 static K_SEM_DEFINE(stats_sem, 0, 1);
+static K_SEM_DEFINE(time_req, 0, 1); /* core 1 is up, or the RTC was just set */
 
 static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volatile void *data)
 {
@@ -51,6 +58,10 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 		       mb.compute % 10);
 		printk("core 1 bench: render_box dial only %u.%u, with hands %u.%u cycles/px\n",
 		       mb.box_plain / 10, mb.box_plain % 10, mb.box_hands / 10, mb.box_hands % 10);
+		return;
+	}
+	if (id == MSG_HELLO) {
+		k_sem_give(&time_req);
 		return;
 	}
 	if (id == MSG_STATS) {
@@ -151,6 +162,54 @@ static void send_time_on_edge(void)
 	       mt.hour, mt.min, mt.sec);
 }
 
+/* Day of week (0 = Sunday) for the RTC, Sakamoto's method. */
+static int weekday(int y, int m, int d)
+{
+	static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+
+	y -= m < 3;
+	return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+}
+
+/* Console input: "T YYYY-MM-DD HH:MM:SS" sets the RTC (tools/settime.py). */
+static void console_rx(void *a, void *b, void *c)
+{
+	const struct device *con = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
+	char line[40];
+	size_t n = 0;
+
+	while (1) {
+		unsigned char ch;
+
+		if (uart_poll_in(con, &ch) != 0) {
+			k_msleep(10);
+			continue;
+		}
+		if (ch != '\n' && ch != '\r') {
+			if (n < sizeof(line) - 1) {
+				line[n++] = ch;
+			}
+			continue;
+		}
+		line[n] = 0;
+		n = 0;
+		int y, mo, d, h, mi, s;
+
+		if (sscanf(line, "T %d-%d-%d %d:%d:%d", &y, &mo, &d, &h, &mi, &s) != 6) {
+			continue;
+		}
+		struct rtc_time t = {.tm_year = y - 1900, .tm_mon = mo - 1, .tm_mday = d,
+				     .tm_hour = h, .tm_min = mi, .tm_sec = s,
+				     .tm_wday = weekday(y, mo, d)};
+		int ret = rtc_set_time(rtc, &t);
+
+		printk("time set from USB: %04d-%02d-%02d %02d:%02d:%02d (%d)\n", y, mo, d, h, mi, s,
+		       ret);
+		k_sem_give(&time_req);
+	}
+}
+K_THREAD_DEFINE(console_tid, 1536, console_rx, NULL, NULL, NULL, 6, 0, 0);
+
 /* PWR: poll the expander every 20 ms, report presses */
 static void pwr_poll(void *a, void *b, void *c)
 {
@@ -186,8 +245,8 @@ int main(void)
 	if (rtc_get_time(rtc, &t) == -ENODATA) {
 		rtc_seed_from_build();
 	}
-	k_msleep(300); /* let core 1 bring up LVGL */
-	send_time_on_edge();
+	k_msleep(300);
+	send_time_on_edge(); /* core 1 may not be listening yet: it says hello */
 
 	for (int n = 1;; n++) {
 		if (k_sem_take(&stats_sem, K_MSEC(2000)) == 0) {
@@ -202,8 +261,8 @@ int main(void)
 		} else {
 			printk("core 1: no stats\n");
 		}
-		if (n % 60 == 0) {
-			send_time_on_edge(); /* keep core 1's clock in step with the RTC */
+		if (k_sem_take(&time_req, K_NO_WAIT) == 0 || n % 60 == 0) {
+			send_time_on_edge(); /* core 1 asked, the RTC was set, or every minute */
 		}
 	}
 	return 0;

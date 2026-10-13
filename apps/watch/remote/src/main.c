@@ -1225,6 +1225,7 @@ int main(void)
 	}
 
 	bool have_te = detect_te();
+	int64_t hello_ms = 0;
 
 	fast_spi = true; /* the Zephyr driver has set SPI2 + GDMA up; take over */
 	/* the cost of one bezel click: the whole ring, as the loop does it */
@@ -1262,6 +1263,10 @@ int main(void)
 		uint32_t t0 = k_cycle_get_32();
 
 		handle_buttons();
+		if (base_ms < 0 && k_uptime_get() - hello_ms > 1000) {
+			hello_ms = k_uptime_get(); /* no time yet: ask core 0 (again) */
+			ipm_send(ipm, 0, MSG_HELLO, NULL, 0);
+		}
 		if (face == FACE_GMT) {
 			bezel_touch();
 		} else {
