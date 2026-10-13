@@ -111,7 +111,7 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 
 /* ---- scene ---------------------------------------------------------------------- */
 
-/* Faces: the GMT (Rolex style, rotating bezel, date) and the chronograph
+/* Faces: the GMT (dive-watch style, rotating bezel, date) and the chronograph
  * (moon-watch style, fixed tachymeter, three subdials).
  */
 enum { FACE_GMT, FACE_CHRONO, FACE_CHRONO_WHITE, FACE_REMOTE, NFACES };
