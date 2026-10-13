@@ -1083,9 +1083,6 @@ static const struct {
 	[RB_NEXT] = {104, 0, 28, KEY_NEXT, 178, 160, 255},
 	[RB_SUN] = {0, 148, 22, 0, 255, 212, 110},              /* sunny */
 };
-#define ICON_R 62 /* icons: dark plum on the pastel buttons */
-#define ICON_G 28
-#define ICON_B 72
 static struct rgb rm_vis_col[40]; /* a rainbow, one colour per visualiser bar */
 /* the now-playing text, below the play button (from the middle) */
 #define RM_TEXT_X0 (-TEXT_W / 2)
@@ -1184,7 +1181,7 @@ static float rm_arrows(float X, float Y, float d2)
 		float t = th * side;
 
 		if (t > 30 && t < 57) {
-			a = fmx(a, clamp01(0.5f - (fabsf(d - 171) - 1.2f)));
+			a = fmx(a, clamp01(0.5f - (fabsf(d - 171) - 0.7f)));
 		}
 		float bx = sinf(side * 56 * deg) * 171, by = -cosf(side * 56 * deg) * 171;
 		float tx = sinf(side * 64 * deg) * 171, ty = -cosf(side * 64 * deg) * 171;
@@ -1194,7 +1191,7 @@ static float rm_arrows(float X, float Y, float d2)
 		uy /= ul;
 		float sl = (X - bx) * ux + (Y - by) * uy, pl = -(X - bx) * uy + (Y - by) * ux;
 
-		a = fmx(a, tri(sl, pl, 0, ul, 6));
+		a = fmx(a, tri(sl, pl, 0, ul, 4.5f));
 	}
 	return a;
 }
@@ -1232,9 +1229,8 @@ static ALWAYS_INLINE float fast_turns(float X, float Y)
 static uint16_t remote_px(float X, float Y)
 {
 	float d2 = X * X + Y * Y;
-	/* deep plum, a little lighter in the middle (matches the knob's inside) */
-	float g = d2 * (1.0f / (193 * 193));
-	struct rgb c = {52 - (int)(22 * g), 32 - (int)(14 * g), 66 - (int)(26 * g)};
+	/* one flat dark plum (the knob strip's inside colour) */
+	struct rgb c = {30, 18, 40};
 
 	if (rm_muted) { /* "MUTED" curved over the mute button */
 		int lx = (int)(X + CX) - (int)(CX + MUTED_X0), ly = (int)(Y + CX) - (int)(CX + MUTED_Y0);
@@ -1257,22 +1253,22 @@ static uint16_t remote_px(float X, float Y)
 		struct rgb bc = {rm_btn[b].cr, rm_btn[b].cg, rm_btn[b].cb};
 
 		if (b == RB_MUTE && rm_muted) {
-			bc = (struct rgb){240, 82, 96};
+			bc = (struct rgb){255, 92, 106};
 		}
-		if (lit) { /* pressed / brightness on: lighter */
-			bc.r += (255 - bc.r) / 2;
-			bc.g += (255 - bc.g) / 2;
-			bc.b += (255 - bc.b) / 2;
+		/* minimal: icons in the button's colour; a faint disc only when
+		 * pressed or active, a thin ring round play/pause
+		 */
+		if (lit || (b == RB_MUTE && rm_muted)) {
+			over(&c, bc.r, bc.g, bc.b, (int)(a * 50));
 		}
-		over(&c, bc.r, bc.g, bc.b, (int)(a * 255));
-		/* a soft white rim and a highlight towards the top, for a rounded look */
-		float edge = a - disc(b2, r - 2.2f, 1.0f / (2 * r - 3.4f));
-		float hi = clamp01(-by / r) * clamp01(1 - b2 / (r * r)) * 0.28f;
+		if (b == RB_PLAY) {
+			float ring = a - disc(b2, r - 1.4f, 1.0f / (2 * r - 1.8f));
 
-		over(&c, 255, 255, 255, (int)((clamp01(edge) * 0.55f + hi) * a * 255));
+			over(&c, bc.r, bc.g, bc.b, (int)(clamp01(ring) * 110));
+		}
 		float ic = rm_icon(b, bx, by);
 
-		over(&c, ICON_R, ICON_G, ICON_B, (int)(ic * 255));
+		over(&c, bc.r, bc.g, bc.b, (int)(ic * 255));
 		return to565(&c);
 	}
 	/* now playing: title (white) and artist (pink) */
@@ -1339,9 +1335,9 @@ static uint16_t remote_px(float X, float Y)
 
 	if (ar > 0) {
 		if (rm_bright) {
-			over(&c, 255, 212, 110, (int)(ar * 220));
+			over(&c, 255, 212, 110, (int)(ar * 120));
 		} else {
-			over(&c, 255, 176, 214, (int)(ar * 220));
+			over(&c, 255, 176, 214, (int)(ar * 120));
 		}
 	}
 	return to565(&c);

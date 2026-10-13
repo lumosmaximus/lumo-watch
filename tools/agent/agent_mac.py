@@ -111,28 +111,52 @@ TEXT_W, TEXT_H = 224, 40        # must match the watch (RM_TEXT_W/H)
 FONT = "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"
 
 
-def fit(draw, txt, font, width):
-    if draw.textlength(txt, font=font) <= width:
-        return txt
-    while txt and draw.textlength(txt + "\u2026", font=font) > width:
-        txt = txt[:-1]
-    return txt.rstrip() + "\u2026"
-
-
-def text_image(title, artist):
-    """Title (row 0-21) and artist (row 22-39), centred, 4 alpha levels, packed
-    4 pixels per byte (first pixel in the top bits)."""
+def strip_image(txt, size):
+    """One line of text, 3x supersampled, as wide as it needs to be."""
     from PIL import Image, ImageDraw, ImageFont
     ss = 3
-    img = Image.new("L", (TEXT_W * ss, TEXT_H * ss), 0)
-    d = ImageDraw.Draw(img)
-    f1 = ImageFont.truetype(FONT, 16 * ss)
-    f2 = ImageFont.truetype(FONT, 13 * ss)
-    d.text((TEXT_W * ss / 2, 11 * ss), fit(d, title, f1, (TEXT_W - 4) * ss), font=f1,
-           fill=255, anchor="mm")
-    d.text((TEXT_W * ss / 2, 31 * ss), fit(d, artist, f2, (TEXT_W - 4) * ss), font=f2,
-           fill=255, anchor="mm")
-    img = img.resize((TEXT_W, TEXT_H), Image.LANCZOS)
+    f = ImageFont.truetype(FONT, size * ss)
+    w = int(ImageDraw.Draw(Image.new("L", (1, 1))).textlength(txt, font=f) / ss) + 2
+    img = Image.new("L", (w * ss, 20 * ss), 0)
+    ImageDraw.Draw(img).text((ss, 10 * ss), txt, font=f, fill=255, anchor="lm")
+    return img.resize((w, 20), Image.LANCZOS)
+
+
+class Line:
+    """A line of the now-playing text: still if it fits, else it scrolls."""
+    GAP, SPEED, PAUSE = 48, 36.0, 1.5      # px between repeats, px/s, s at the start
+
+    def __init__(self, txt, size):
+        self.img = strip_image(txt, size)
+        self.w = self.img.width
+        self.t0 = time.time()
+
+    def frame(self, now):
+        from PIL import Image
+        out = Image.new("L", (TEXT_W, 20), 0)
+        if self.w <= TEXT_W:
+            out.paste(self.img, ((TEXT_W - self.w) // 2, 0))
+            return out
+        t = max(0.0, now - self.t0 - self.PAUSE)
+        x = int(t * self.SPEED) % (self.w + self.GAP)
+        if x == 0 and t > 0:
+            self.t0 = now          # pause again at the start of each pass
+        out.paste(self.img, (-x, 0))
+        out.paste(self.img, (self.w + self.GAP - x, 0))
+        return out
+
+    @property
+    def moving(self):
+        return self.w > TEXT_W
+
+
+def pack(title_img, artist_img):
+    """Title rows 0-19 (+2 blank), artist rows 22-39 (cropped from 20), 2 bits
+    per pixel, 4 pixels per byte, first pixel in the top bits."""
+    from PIL import Image
+    img = Image.new("L", (TEXT_W, TEXT_H), 0)
+    img.paste(title_img, (0, 1))
+    img.paste(artist_img.crop((0, 1, TEXT_W, 19)), (0, 22))
     px = img.tobytes()
     out = bytearray()
     for i in range(0, len(px), 4):
@@ -169,24 +193,42 @@ def main():
     s = port()
     threading.Thread(target=drain, args=(s,), daemon=True).start()
     last = None
-    last_text, text_sent = None, 0
+    lines = [None]           # (Line title, Line artist), swapped by the poller
+    lock = threading.Lock()
+
+    def text_loop():
+        """Send the now-playing text: ~12 frames/s while a line scrolls, else
+        when it changes and every 5 s (the watch may have restarted)."""
+        import base64
+        sent, sent_t = None, 0
+        while True:
+            cur = lines[0]
+            now = time.time()
+            if cur and (cur[0].moving or cur[1].moving or cur is not sent or now - sent_t > 5):
+                data = pack(cur[0].frame(now), cur[1].frame(now))
+                try:
+                    with lock:
+                        s.write(b"N " + base64.b64encode(data) + b"\n")
+                except Exception:
+                    pass
+                sent, sent_t = cur, now
+            time.sleep(0.08)
+
+    threading.Thread(target=text_loop, daemon=True).start()
+    text = None
     while True:
         try:
             v, m, p, title, artist = media()
             line = f"S v={v} m={m} b={brightness()} p={p}\n"
-            s.write(line.encode())
+            with lock:
+                s.write(line.encode())
             if line != last:
                 print(line.strip())
                 last = line
-            # the now-playing text: when it changes, and every 5 s (the watch
-            # may have restarted)
-            text = (title, artist)
-            if text != last_text or time.time() - text_sent > 5:
-                import base64
-                s.write(b"N " + base64.b64encode(text_image(title, artist)) + b"\n")
-                if text != last_text:
-                    print("now playing:", title, "-", artist)
-                last_text, text_sent = text, time.time()
+            if (title, artist) != text:
+                text = (title, artist)
+                lines[0] = (Line(title, 16), Line(artist, 13))
+                print("now playing:", title, "-", artist)
         except (serial.SerialException, OSError):
             print("watch gone, waiting...")
             s = port()
