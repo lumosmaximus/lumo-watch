@@ -773,6 +773,7 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 	uint32_t pt1 = k_cycle_get_32();
 
 	trace_ev(TR_BOX_END, h, w);
+	trace_flush_room(6); /* keep room: the ring repaint is 70+ boxes in a row */
 	if (fast_spi) {
 		qf_write(x0, y0, w, h, buf); /* returns as soon as the DMA runs */
 		if (!qf_overlap) {
@@ -841,7 +842,6 @@ static int render_bands(void)
 		int x0 = band_x0[b] & ~1, x1 = band_x1[b] | 1;
 
 		render_box(x0, b * BAND, MIN(x1, N - 1), MIN(b * BAND + BAND - 1, N - 1));
-		trace_flush_room(6); /* a box is up to ~5 events */
 		n++;
 	}
 	return n;

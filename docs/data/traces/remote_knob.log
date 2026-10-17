@@ -1,0 +1,10 @@
+core 1: no stats
+cmd W 15
+cmd W 15
+cmd W 15
+cmd W 15
+cmd W 15
+cmd W -15
+core 1: no stats
+cmd W -15
+cmd W -15

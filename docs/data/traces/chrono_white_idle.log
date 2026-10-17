@@ -1,0 +1,12 @@
+composite 1468 us, write 239 us
+stages us: bg 57 ring 6 hands 1169 sec 40 (19 px) swap 132
+spi: 0 underruns, overlap 1
+core 1: 60 fps, 1745 us/frame: 2469 px in 11 boxes, composite 1454 us, write 235 us
+stages us: bg 57 ring 6 hands 1154 sec 40 (19 px) swap 133
+spi: 0 underruns, overlap 1
+core 1: 60 fps, 1826 us/frame: 2677 px in 11 boxes, composite 1487 us, write 247 us
+stages us: bg 59 ring 6 hands 1175 sec 40 (19 px) swap 143
+spi: 0 underruns, overlap 1
+core 1: 60 fps, 1941 us/frame: 2711 px in 10 boxes, composite 1473 us, write 242 us
+stages us: bg 57 ring 6 hands 1166 sec 39 (19 px) swap 144
+spi: 0 underruns, overlap 1

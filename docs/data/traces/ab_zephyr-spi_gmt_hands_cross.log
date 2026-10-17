@@ -1,0 +1,6 @@
+core 1: 30 fps, 19761 us/frame: 10259 px in 34 boxes, composite 16223 us, write 3415 us
+stages us: bg 297 ring 102 hands 9880 sec 5257 (4225 px) swap 496
+spi: 0 underruns, overlap 0
+core 1: 30 fps, 20309 us/frame: 10798 px in 34 boxes, composite 16520 us, write 3649 us
+stages us: bg 321 ring 107 hands 10103 sec 5275 (4233 px) swap 521
+spi: 0 underruns, overlap 0

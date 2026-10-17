@@ -1,0 +1,30 @@
+posite 987 us, write 122 us
+stages us: bg 34 ring 2 hands 751 sec 35 (21 px) swap 133
+spi: 0 underruns, overlap 1
+core 1: 60 fps, 1120 us/frame: 2683 px in 4 boxes, composite 928 us, write 112 us
+stages us: bg 30 ring 2 hands 705 sec 34 (21 px) swap 127
+spi: 0 underruns, overlap 1
+core 1: 60 fps, 1080 us/frame: 2716 px in 4 boxes, composite 892 us, write 101 us
+stages us: bg 28 ring 2 hands 675 sec 33 (21 px) swap 128
+spi: 0 underruns, overlap 1
+core 1: 60 fps, 1101 us/frame: 2682 px in 4 boxes, composite 913 us, write 108 us
+stages us: bg 30 ring 2 hands 692 sec 34 (21 px) swap 127
+spi: 0 underruns, overlap 1
+core 1: 60 fps, 1167 us/frame: 2799 px in 5 boxes, composite 972 us, write 122 us
+stages us: bg 32 ring 2 hands 735 sec 35 (21 px) swap 135
+spi: 0 underruns, overlap 1
+cmd F 0
+time set from USB: 2026-10-17 03:50:00 (0)
+core 1: 55 fps, 5256 us/frame: 10159 px in 9 boxes, composite 4934 us, write 222 us
+stages us: bg 413 ring 215 hands 2386 sec 1389 (1382 px) swap 476
+spi: 0 underruns, overlap 1
+time -> core 1: 2026-10-17 03:50:02
+core 1: 58 fps, 11789 us/frame: 14368 px in 19 boxes, composite 11226 us, write 427 us
+stages us: bg 675 ring 223 hands 5056 sec 4481 (4205 px) swap 677
+spi: 0 underruns, overlap 1
+core 1: 59 fps, 12703 us/frame: 12704 px in 33 boxes, composite 11837 us, write 732 us
+stages us: bg 678 ring 195 hands 4859 sec 5295 (4241 px) swap 614
+spi: 0 underruns, overlap 1
+core 1: 59 fps, 13072 us/frame: 12957 px in 31 boxes, composite 11901 us, write 1024 us
+stages us: bg 905 ring 200 hands 4843 sec 5148 (4166 px) swap 622
+spi: 0 underruns, overlap 1

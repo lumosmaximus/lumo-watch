@@ -1,12 +1,30 @@
-composite 1468 us, write 239 us
-stages us: bg 57 ring 6 hands 1169 sec 40 (19 px) swap 132
+1
+core 1: 60 fps, 1153 us/frame: 2786 px in 5 boxes, composite 975 us, write 116 us
+stages us: bg 34 ring 2 hands 738 sec 34 (21 px) swap 133
 spi: 0 underruns, overlap 1
-core 1: 60 fps, 1745 us/frame: 2469 px in 11 boxes, composite 1454 us, write 235 us
-stages us: bg 57 ring 6 hands 1154 sec 40 (19 px) swap 133
+core 1: 60 fps, 1071 us/frame: 2691 px in 4 boxes, composite 903 us, write 97 us
+stages us: bg 29 ring 2 hands 685 sec 33 (21 px) swap 127
 spi: 0 underruns, overlap 1
-core 1: 60 fps, 1826 us/frame: 2677 px in 11 boxes, composite 1487 us, write 247 us
-stages us: bg 59 ring 6 hands 1175 sec 40 (19 px) swap 143
+core 1: 60 fps, 1054 us/frame: 2693 px in 4 boxes, composite 887 us, write 94 us
+stages us: bg 28 ring 2 hands 670 sec 33 (21 px) swap 127
 spi: 0 underruns, overlap 1
-core 1: 60 fps, 1941 us/frame: 2711 px in 10 boxes, composite 1473 us, write 242 us
-stages us: bg 57 ring 6 hands 1166 sec 39 (19 px) swap 144
+core 1: 60 fps, 1117 us/frame: 2736 px in 5 boxes, composite 947 us, write 113 us
+stages us: bg 32 ring 2 hands 715 sec 34 (21 px) swap 131
+spi: 0 underruns, overlap 1
+core 1: 60 fps, 1149 us/frame: 2779 px in 5 boxes, composite 973 us, write 118 us
+stages us: bg 32 ring 2 hands 736 sec 34 (21 px) swap 135
+cmd F 0
+time set from USB: 2026-10-17 03:50:00 (0)
+core 1: 56 fps, 4601 us/frame: 9470 px in 9 boxes, composite 4298 us, write 221 us
+stages us: bg 339 ring 131 hands 2141 sec 1182 (1146 px) swap 446
+spi: 0 underruns, overlap 1
+time -> core 1: 2026-10-17 03:50:01
+core 1: 58 fps, 12007 us/frame: 13031 px in 29 boxes, composite 11237 us, write 635 us
+stages us: bg 501 ring 137 hands 4870 sec 4933 (4150 px) swap 624
+spi: 0 underruns, overlap 1
+core 1: 59 fps, 12349 us/frame: 12351 px in 34 boxes, composite 11477 us, write 740 us
+stages us: bg 458 ring 128 hands 4792 sec 5298 (4238 px) swap 599
+spi: 0 underruns, overlap 1
+core 1: 59 fps, 12985 us/frame: 12937 px in 32 boxes, composite 11813 us, write 1027 us
+stages us: bg 731 ring 132 hands 4880 sec 5252 (4239 px) swap 625
 spi: 0 underruns, overlap 1

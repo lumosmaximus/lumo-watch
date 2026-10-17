@@ -1,0 +1,11 @@
+core 1: 59 fps, 13000 us/frame: 14260 px in 26 boxes, composite 12296 us, write 573 us
+stages us: bg 731 ring 147 hands 5709 sec 4880 (4140 px) swap 680
+spi: 0 underruns, overlap 1
+cmd Z 1
+core 1: 58 fps, 14892 us/frame: 15750 px in 26 boxes, composite 13982 us, write 766 us
+stages us: bg 735 ring 251 hands 7227 sec 4874 (4197 px) swap 747
+spi: 0 underruns, overlap 1
+cmd Z 1
+cmd Z 1
+cmd Z 1
+cmd Z -1

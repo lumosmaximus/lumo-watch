@@ -89,6 +89,10 @@ class Trace:
             if e.name == "TE":
                 te = e.t
             elif e.name == "FRAME_BEGIN":
+                if cur is not None:  # its FRAME_END was lost: close it here
+                    cur.t1 = e.t
+                    cur.work_ms = (e.t - cur.t0) * 1000
+                    frames.append(cur)
                 cur = Frame(te, e.t, e.t, FACES.get(e.a, str(e.a)))
                 te = None
             elif cur is None:

@@ -281,6 +281,63 @@ Serial is fine for a development tool; for a product the usual choice is a
 vendor-defined HID interface (raw HID): no COM port to find, no drivers, and
 the helper finds the device by its USB id.
 
+## 16. Seeing it: an event tracer on both cores
+
+Per-second averages hide what a frame looks like, so the watch got a tracer
+(`tools/trace/README.md`): 8-byte events (timestamp, id, two arguments)
+stamped from the one system timer both cores can read, staged on core 1 in
+60-event batches (its RAM is nearly full), stored on core 0 (16k events) and
+dumped over the USB console as base64. `animate.py` turns a trace into a
+page you can play and scrub: TE edges, each box being composed, the CPU
+stalling for the DMA, the bezel repaint, the SPI/DMA transfer, core 0's
+touches and keys, the messages between the cores, and a map of which bands
+of the screen were redrawn (`docs/data/traces/*.html`).
+
+Things the tracer itself got wrong first: a batch filling up exactly at the
+frame boundary dropped the frame markers (now batches are flushed with room
+to spare, after every box); the dump went through the log buffer and lost
+lines (now written straight to the port, which blocks instead of dropping);
+scripted setup commands sent 7 s after flashing were lost because core 1 was
+still in its boot benchmark (now 16 s); and `k_cycle_get_32()` is per core,
+so the first traces had core 0's events 6 s away from core 1's.
+
+## 17. Before and after, measured the same way
+
+Each optimisation has a build switch (`apps/watch/remote/Kconfig`) so the
+version before it can be rebuilt and traced on the same scripted scenarios
+(`tools/trace/ab_build.sh`, `ab_capture.sh`). GMT face, 1.8 s captures;
+"stall" is CPU time spent waiting for the previous DMA transfer, "slow" is
+frames that missed the next refresh.
+
+| Build | idle: work / stall ms | bezel click: ring repaint ms, worst frame | hands crossing: fps, slow frames |
+|---|---|---|---|
+| **as shipped** | 13.4 / 0.9 | 16.3, 32 ms | 36, 40 of 64 |
+| display writes through the Zephyr SPI driver | 15.9 / 0 (the wait is inside the driver) | 25.4, 43 ms | 29, 52 of 52 |
+| no DMA overlap (send each box, then compose the next) | 14.0 / 2.0 | 20.2, 37 ms | 32, 48 of 57 |
+| bezel strip read from flash instead of RAM | 13.7 / 0.9 | 18.9, 35 ms | 41, 32 of 73 |
+| second-hand stage in every box (no gating) | 13.2 / 0.9 | 18.1, 34 ms | 48, 19 of 86 |
+| free-running (no TE lock) | the loop spins ~10,000 empty frames a second and redraws whenever the angle ticks, anywhere in the panel's refresh | 16.6 | worst frame 32 ms |
+
+Reading it honestly:
+
+- The direct SPI path is the biggest single win still measurable: 2.5 ms a
+  frame and 9 ms per bezel click, because every one of the ~35 windows a frame
+  paid the driver's per-transaction overhead.
+- DMA overlap saves about 1.1 ms of stall a frame and 4 ms per bezel click.
+- RAM vs flash for the ring strip is worth 2.6 ms per click here; the 37 to
+  14 ms jump in section 13 was mostly the palette compression and
+  pre-blending, which this switch cannot undo (both builds use the compact
+  strip).
+- Second-hand gating does nothing measurable for ordinary frames (the span
+  solver already skips rows the hand misses); it saves ~2 ms on a bezel
+  click, when 70 ring boxes would otherwise each run the stage. The
+  hands-crossing columns differ more by *when* in the crossing the 1.8 s
+  window fell than by the switch.
+- A bezel click still costs one missed frame (ring 16 ms + a normal frame).
+- The hands stage swings between 3.8 and 10 ms within every minute as the
+  second hand passes over the other hands (seen with the stats, confirmed by
+  `gmt_hands_cross.html`): the remaining dip, and the next thing to fix.
+
 ## Concurrency and timing techniques used
 
 - AMP: one core per job, separate images, no shared scheduler.
