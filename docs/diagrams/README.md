@@ -6,6 +6,7 @@ named at the top of each file, so if the code changes, update the prompt.
 
 | File | Diagram |
 |---|---|
+| `00-hero.md` | the header illustration: the device as a teardown sketch with four labelled callouts |
 | `01-hardware.md` | the board: chips, buses, pins, what talks to what |
 | `02-cores-and-memory.md` | the two cores, their images, RAM/flash layout, how core 1 is started |
 | `03-messages.md` | every message between the cores, direction, size, when it is sent |
