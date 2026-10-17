@@ -1,6 +1,7 @@
 # Diagram prompts
 
-One file per diagram. Paste a file's contents into Claude Design (or any
+One file per diagram; the rendered pictures sit next to the prompts as
+`NN-name.webp` (made in Claude Design from these prompts, October 2026). Paste a file's contents into Claude Design (or any
 diagram tool) to get the picture; every fact in them comes from the sources
 named at the top of each file, so if the code changes, update the prompt.
 

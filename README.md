@@ -13,7 +13,7 @@ Waveshare **ESP32-S3-Touch-AMOLED-1.75**. A 1.75" round AMOLED, 466x466, driven 
 One number ran the whole project: a full frame is 434 KB, about **11 ms of bus time**. Redrawing the screen 60 times a second is therefore not a plan, it is a wish. Everything below is what you do instead.
 
 ![Device photo: the board, front and back](docs/photos/board.jpg)
-![Hardware diagram](docs/diagrams/01-hardware.png)
+![Hardware diagram](docs/diagrams/01-hardware.webp)
 
 Zephyr RTOS rather than the vendor SDK, so that anyone can clone this and build it with the standard tools; that meant writing the board definition and four drivers first. The CO5300 wants its commands bit-expanded onto one data line inside quad transactions, which no existing driver does. The CST9217 touch chip only interrupts on first contact and about once a second after that, so the driver polls until the finger lifts; it also reports how many fingers, which the gestures use. Two codec drivers came along for a later life as a microphone.
 
@@ -27,8 +27,8 @@ Board support, drivers, apps: [`boards/`](boards/) · [`drivers/`](drivers/) · 
 
 Two cores, so two jobs. Core 0 gets the sensors, the buttons, the time and the USB port. Core 1 gets the display and nothing else, like a chef who is not allowed to answer the phone. They pass notes through the chip's mailbox.
 
-![Cores and memory](docs/diagrams/02-cores-and-memory.png)
-![Messages between the cores](docs/diagrams/03-messages.png)
+![Cores and memory](docs/diagrams/02-cores-and-memory.webp)
+![Messages between the cores](docs/diagrams/03-messages.webp)
 
 The first face used a GUI library. It ran at 12 to 26 fps depending on where the hands happened to point, and the second hand hopped from pixel to pixel like it was crossing a hot pavement. Eight steps later it glides at 59:
 
@@ -59,7 +59,7 @@ The first face used a GUI library. It ran at 12 to 26 fps depending on where the
 | ![bezel strip read from flash](docs/data/clips/bezel_before.gif) | ![bezel strip in RAM](docs/data/clips/bezel_after.gif) |
 |---|---|
 
-![One frame on core 1](docs/diagrams/04-render-pipeline.png)
+![One frame on core 1](docs/diagrams/04-render-pipeline.webp)
 
 **Where it landed:** 59-60 fps, locked to the panel, using 9-13 ms of each 16.7 ms frame. Every "before" above is a real build with that one change switched back off, traced on the same scripted scenario, because "it felt faster" is not a measurement.
 
@@ -75,13 +75,13 @@ Every step with its numbers: [`docs/optimization-log.md`](docs/optimization-log.
 
 No image editor was involved. Python scripts draw the dials, the bezel and the knob with Pillow at three times the resolution and shrink them down: `watch.py` for the GMT, `chrono.py` for both chronographs (the tachymeter laid out letter by letter along the curve), `knob.py` for the remote's ring. They emit C arrays, so changing a colour is a two-line edit and a rebuild. The hands are not images at all; they are a few shape functions in C.
 
-![From Python drawings to pixels on the panel](docs/diagrams/07-asset-pipeline.png)
+![From Python drawings to pixels on the panel](docs/diagrams/07-asset-pipeline.webp)
 
 [`tools/watchface/`](tools/watchface/)
 
 ## A nicer human interface
 
-![Faces and how you move between them](docs/diagrams/06-faces-and-ui.png)
+![Faces and how you move between them](docs/diagrams/06-faces-and-ui.webp)
 
 | ![bezel turn](docs/renders/gmt_bezel_turn.gif) | ![chronograph](docs/renders/chrono_white.gif) | ![picker](docs/renders/picker.png) |
 |---|---|---|
@@ -97,7 +97,7 @@ The bezel turns under your finger and clicks every minute, which is deeply satis
 
 Plug it into a laptop and it is a USB media device, the same kind as the volume keys on a keyboard, so Windows and macOS need no driver and ask no questions. The ring is a knob: one key per 15 degrees, a couple of turns from silent to full, like a wheel from a music player you may remember. Mute (the button turns red and says so), previous, next, play/pause with a rainbow visualiser that bounces while something plays and fades when it stops, and a sun button that turns the knob amber and makes it adjust screen brightness until you press it again or leave it alone for 30 s. A small helper on the laptop sends back the real volume, mute and play state and what is playing, which the watch shows as a level meter and a scrolling title. [`apps/watch/src/usb_hid.c`](apps/watch/src/usb_hid.c) · [`tools/agent/agent_mac.py`](tools/agent/agent_mac.py)
 
-![USB and the helper](docs/diagrams/05-usb-and-helper.png)
+![USB and the helper](docs/diagrams/05-usb-and-helper.webp)
 
 Two bugs that deserve their own paragraph. The two cores' images computed the end of RAM from two different boot formats, and their memory regions overlapped by 18 KB; nothing noticed until core 0's heap grew, and the linker maps told the story. And a cache of finished pixels under the hands, which cut the hands stage from 5.5 ms to 0.5 ms, corrupted the screen while an on-device check proved every cached pixel identical to a full recompute. It was removed. It is still not explained. [`docs/optimization-log.md`](docs/optimization-log.md#10-the-hand-cache-that-corrupted-the-screen)
 
