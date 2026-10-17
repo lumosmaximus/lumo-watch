@@ -361,13 +361,15 @@ Reading it honestly:
 | | ms per frame |
 |---|---|
 | background copy | ~0.5-1 |
-| bezel (no turn) | ~1.3 |
-| GMT/hour/minute hands | 4-9 |
+| bezel (no turn) | ~0.1-1.3 |
+| GMT/hour/minute hands | 3.8-10, depending on where the second hand is |
 | second hand | ~4.5 |
 | byte swap | ~0.6 |
-| SPI writes (mostly overlapped) | ~0.5-0.7 |
-| **typical total** | **~12 of 16.7** |
+| SPI writes (mostly overlapped) | ~0.5-0.9 stall |
+| **typical total, GMT** | **~13 of 16.7** |
+| chronographs | ~2 (stopped), ~11 (running) |
+| a bezel click | 14-16 ms repaint: one missed frame |
 
-59 fps locked to the panel. Remaining dips: turning the bezel (ring repaint
-20-66 ms) and the second hand crossing the other hands (hands stage up to
-~9 ms).
+59-60 fps locked to the panel. Remaining dip: the second hand passing over
+the other hands (hands stage up to 10 ms) for a few frames a minute. Core 1
+RAM 97% used, its flash slot 93%.

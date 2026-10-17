@@ -1,3 +1,6 @@
 build*/
 .venv/
 __pycache__/
+tools/render/frames/
+tools/render/render
+tools/render/title.bin

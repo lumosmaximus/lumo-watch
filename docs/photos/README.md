@@ -9,6 +9,7 @@ The README shows these when the files exist; until then the site hides them.
 | `bezel.jpg` | a thumb turning the bezel on the GMT face |
 | `knob.jpg` | the knob being turned, the laptop's volume overlay visible behind |
 
+| `hwtest.jpg` | the hw_test boundary pattern on the panel (flash `apps/hw_test`) |
 | `helper.jpg` | the watch showing a title that is playing on the laptop behind it |
 
 Keep them under ~400 KB each (the page loads them from GitHub).

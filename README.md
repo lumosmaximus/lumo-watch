@@ -15,6 +15,12 @@ One number ran the whole project: a full frame is 434 KB, about **11 ms of bus t
 ![Device photo: the board, front and back](docs/photos/board.jpg)
 ![Hardware diagram](docs/diagrams/01-hardware.png)
 
+Zephyr RTOS rather than the vendor SDK, so that anyone can clone this and build it with the standard tools; that meant writing the board definition and four drivers first. The CO5300 wants its commands bit-expanded onto one data line inside quad transactions, which no existing driver does. The CST9217 touch chip only interrupts on first contact and about once a second after that, so the driver polls until the finger lifts; it also reports how many fingers, which the gestures use. Two codec drivers came along for a later life as a microphone.
+
+Before any watch, two small apps proved the board: `amp_hello` boots both cores and pings between them (12 µs round trip), and `hw_test` checks every peripheral at boot, draws a boundary pattern to catch a cropped edge, and hammers the display with alternating bit patterns to catch corruption. The TF card slot taught the first lesson: one card never finished initialising, hours were spent on the driver, and the card was simply bad. Quad-I/O flash doubled the read bandwidth the display core lives on.
+
+![Device photo: hw_test's boundary pattern on the panel](docs/photos/hwtest.jpg)
+
 Board support, drivers, apps: [`boards/`](boards/) · [`drivers/`](drivers/) · [`apps/`](apps/) · how to build it: [`docs/BUILD.md`](docs/BUILD.md)
 
 ## A simple watch first
@@ -22,6 +28,7 @@ Board support, drivers, apps: [`boards/`](boards/) · [`drivers/`](drivers/) · 
 Two cores, so two jobs. Core 0 gets the sensors, the buttons, the time and the USB port. Core 1 gets the display and nothing else, like a chef who is not allowed to answer the phone. They pass notes through the chip's mailbox.
 
 ![Cores and memory](docs/diagrams/02-cores-and-memory.png)
+![Messages between the cores](docs/diagrams/03-messages.png)
 
 The first face used a GUI library. It ran at 12 to 26 fps depending on where the hands happened to point, and the second hand hopped from pixel to pixel like it was crossing a hot pavement. Eight steps later it glides at 59:
 
@@ -64,7 +71,17 @@ The one dip left: when the second hand sweeps over the other hands, shading them
 
 Every step with its numbers: [`docs/optimization-log.md`](docs/optimization-log.md) · all 21 traces, playable: [`docs/data/traces/`](docs/data/traces/README.md)
 
+## Dials drawn by code
+
+No image editor was involved. Python scripts draw the dials, the bezel and the knob with Pillow at three times the resolution and shrink them down: `watch.py` for the GMT, `chrono.py` for both chronographs (the tachymeter laid out letter by letter along the curve), `knob.py` for the remote's ring. They emit C arrays, so changing a colour is a two-line edit and a rebuild. The hands are not images at all; they are a few shape functions in C.
+
+![From Python drawings to pixels on the panel](docs/diagrams/07-asset-pipeline.png)
+
+[`tools/watchface/`](tools/watchface/)
+
 ## A nicer human interface
+
+![Faces and how you move between them](docs/diagrams/06-faces-and-ui.png)
 
 | ![bezel turn](docs/renders/gmt_bezel_turn.gif) | ![chronograph](docs/renders/chrono_white.gif) | ![picker](docs/renders/picker.png) |
 |---|---|---|
@@ -78,9 +95,11 @@ The bezel turns under your finger and clicks every minute, which is deeply satis
 ![Device photo: knob in hand, laptop volume overlay visible](docs/photos/knob.jpg)
 ![the remote](docs/renders/remote_playing.gif)
 
-Plug it into a laptop and it is a USB media device, the same kind as the volume keys on a keyboard, so Windows and macOS need no driver and ask no questions. The ring is a knob: one key per 15 degrees, a couple of turns from silent to full, like a wheel from a music player you may remember. Mute, previous, next, play/pause, brightness. A small helper on the laptop sends back the real volume, mute and play state and what is playing, which the watch shows as a level meter and a scrolling title. [`apps/watch/src/usb_hid.c`](apps/watch/src/usb_hid.c) · [`tools/agent/agent_mac.py`](tools/agent/agent_mac.py)
+Plug it into a laptop and it is a USB media device, the same kind as the volume keys on a keyboard, so Windows and macOS need no driver and ask no questions. The ring is a knob: one key per 15 degrees, a couple of turns from silent to full, like a wheel from a music player you may remember. Mute (the button turns red and says so), previous, next, play/pause with a rainbow visualiser that bounces while something plays and fades when it stops, and a sun button that turns the knob amber and makes it adjust screen brightness until you press it again or leave it alone for 30 s. A small helper on the laptop sends back the real volume, mute and play state and what is playing, which the watch shows as a level meter and a scrolling title. [`apps/watch/src/usb_hid.c`](apps/watch/src/usb_hid.c) · [`tools/agent/agent_mac.py`](tools/agent/agent_mac.py)
 
 ![USB and the helper](docs/diagrams/05-usb-and-helper.png)
+
+Two bugs that deserve their own paragraph. The two cores' images computed the end of RAM from two different boot formats, and their memory regions overlapped by 18 KB; nothing noticed until core 0's heap grew, and the linker maps told the story. And a cache of finished pixels under the hands, which cut the hands stage from 5.5 ms to 0.5 ms, corrupted the screen while an on-device check proved every cached pixel identical to a full recompute. It was removed. It is still not explained. [`docs/optimization-log.md`](docs/optimization-log.md#10-the-hand-cache-that-corrupted-the-screen)
 
 Things the USB port had opinions about: it shares one PHY between the flashing port and our device, so once the watch was a USB device you could no longer flash it (a reboot-to-download command fixed that). A keyboard interface for the brightness keys made macOS open "identify your keyboard" on every plug-in. The inter-core mailbox does not queue, so the "open the remote" gesture kept being overwritten by the touch update sent microseconds later. And it holds 512 bytes, so the now-playing text travels in pieces.
 
