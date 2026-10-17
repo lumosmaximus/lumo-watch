@@ -84,6 +84,16 @@ Plug it into a laptop and it is a USB media device, the same kind as the volume 
 
 Things the USB port had opinions about: it shares one PHY between the flashing port and our device, so once the watch was a USB device you could no longer flash it (a reboot-to-download command fixed that). A keyboard interface for the brightness keys made macOS open "identify your keyboard" on every plug-in. The inter-core mailbox does not queue, so the "open the remote" gesture kept being overwritten by the touch update sent microseconds later. And it holds 512 bytes, so the now-playing text travels in pieces.
 
+## The cable does more than charge
+
+The RTC has no backup battery, so every unplug is amnesia: the watch wakes up believing it is whenever the firmware was compiled. Rather than add a coin cell, the computer sets the clock: the same USB port carries a serial console, and `tools/settime.py` waits for the start of a second, then sends one line, `T 2026-10-17 10:30:00`. Core 0 writes it to the RTC and tells core 1 right on the next second boundary; core 1 adds milliseconds from its own uptime, which is how a 1-second RTC ends up driving a hand that moves every 16.7 ms. (On first boot core 1 asks for the time every second until it gets it, because the first attempt used to arrive before it was listening.)
+
+The helper, `tools/agent/agent_mac.py`, is the rest of the return path. Four times a second it reads the Mac's volume and mute (AppleScript), the built-in display's brightness (a private DisplayServices call), and what is playing: YouTube tabs in Chrome through "JavaScript from Apple Events" (`video.paused`, the title, the channel) or Spotify/Music. It sends one line, `S v=63 m=0 b=85 p=1`. For the title it goes further, since the watch has no fonts and three kilobytes of RAM to spare: it draws the text with Pillow as a 224x40 image at 2 bits per pixel and streams it, twelve frames a second when the line scrolls. The watch just copies pixels.
+
+Serial lines are fine for a desk; a product would use a raw HID report for the same traffic and never show a COM port. [`tools/settime.py`](tools/settime.py) · [`tools/agent/agent_mac.py`](tools/agent/agent_mac.py) · [`apps/watch/src/main.c`](apps/watch/src/main.c) (the console parser)
+
+![Video: plugging in, setting the time, the title appearing](docs/photos/helper.jpg)
+
 ## Seeing it: traces, renders, diagrams
 
 Averages lie. Both cores now carry an event tracer (8-byte events on one shared hardware clock), dumped over USB and turned into pages you can play and scrub; the viewer at the top of this page is one. The display code also compiles for the computer, which is where every render on this page came from, pixel for pixel.
