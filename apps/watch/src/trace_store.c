@@ -18,7 +18,7 @@
 #include "../common/watch_msg.h"
 #include "trace_store.h"
 
-#define TRACE_MAX 12288 /* events: 96 KB, about 3 s of frames */
+#define TRACE_MAX 16384 /* events: 128 KB, about 2 s of busy GMT frames */
 
 static struct trace_ev store[TRACE_MAX];
 static volatile int n_ev;

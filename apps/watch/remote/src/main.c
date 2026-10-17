@@ -66,6 +66,7 @@ static bool qf_overlap = IS_ENABLED(CONFIG_WATCH_SPI_OVERLAP); /* boxes go out w
 /* ---- inputs from core 0 (written in the IPM interrupt) ------------------------- */
 
 extern struct k_msgq buttons;
+extern struct k_msgq cmds;
 static struct msg_time base;
 static volatile int64_t base_ms = -1;
 static volatile struct msg_touch touch;
@@ -85,6 +86,13 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 	trace_ev(TR_MSG_RX, id, 0);
 	if (id == MSG_TRACE_CTL) {
 		trace_set(((volatile struct msg_trace_ctl *)data)->on);
+		return;
+	}
+	if (id == MSG_CMD) {
+		uint8_t raw[sizeof(struct msg_cmd)];
+
+		memcpy(raw, (const void *)data, sizeof(raw));
+		(void)k_msgq_put(&cmds, raw, K_NO_WAIT);
 		return;
 	}
 	if (id == MSG_TIME) {
@@ -833,7 +841,7 @@ static int render_bands(void)
 		int x0 = band_x0[b] & ~1, x1 = band_x1[b] | 1;
 
 		render_box(x0, b * BAND, MIN(x1, N - 1), MIN(b * BAND + BAND - 1, N - 1));
-		trace_flush(); /* only sends when a batch is full */
+		trace_flush_room(6); /* a box is up to ~5 events */
 		n++;
 	}
 	return n;
@@ -1674,6 +1682,42 @@ static void remote_frame(void)
 /* ---- buttons and the face picker ------------------------------------------------------ */
 
 K_MSGQ_DEFINE(buttons, sizeof(uint8_t), 8, 1);
+K_MSGQ_DEFINE(cmds, sizeof(struct msg_cmd), 4, 1);
+
+/* Scripted actions from the console (for repeatable traces). */
+static void handle_cmds(void)
+{
+	struct msg_cmd c;
+
+	while (k_msgq_get(&cmds, &c, K_NO_WAIT) == 0) {
+		switch (c.cmd) {
+		case CMD_FACE:
+			if (c.arg >= 0 && c.arg < NFACES && c.arg != face) {
+				if (c.arg == FACE_REMOTE) {
+					remote_enter();
+				} else {
+					if (face == FACE_REMOTE) {
+						remote_leave_ring();
+					}
+					face_setup(c.arg);
+					draw_full();
+				}
+			}
+			break;
+		case CMD_BEZEL:
+			if (face == FACE_GMT) {
+				bezel_rot = ((bezel_rot + c.arg * BEZEL_STEP) % 3600 + 3600) % 3600;
+			}
+			break;
+		case CMD_KNOB:
+			if (face == FACE_REMOTE) {
+				rm_pos += c.arg * 10;
+				remote_knob_redraw();
+			}
+			break;
+		}
+	}
+}
 
 #define PICK_R  80 /* thumbnail radius */
 static const int pick_cx[NFACES] = {147, 319, 147, 319};
@@ -1984,12 +2028,13 @@ int main(void)
 	uint32_t frames = 0, busy_us = 0, last_stats = k_uptime_get_32(), max_us = 0;
 
 	while (1) {
-		trace_flush(); /* trace batches go to core 0 between frames */
+		trace_flush_room(8); /* room for TE, frame begin and the first box */
 		wait_te(have_te);
 		uint32_t t0 = k_cycle_get_32();
 
 		trace_ev(TR_FRAME_BEGIN, face, (uint16_t)frames);
 		handle_buttons();
+		handle_cmds();
 		if (face == FACE_REMOTE) {
 			remote_frame();
 			trace_ev(TR_FRAME_END, 0, k_cyc_to_us_floor32(k_cycle_get_32() - t0) / 10);

@@ -20,6 +20,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
@@ -265,6 +266,16 @@ static void console_rx(void *a, void *b, void *c)
 			} else {
 				trace_stop_dump();
 			}
+			continue;
+		}
+		/* scripted actions for traces: F<face>, Z<clicks> (bezel), W<deg> (knob) */
+		if ((line[0] == 'F' || line[0] == 'Z' || line[0] == 'W') && line[1]) {
+			struct msg_cmd c = {.cmd = line[0] == 'F' ? CMD_FACE : line[0] == 'Z' ? CMD_BEZEL
+									: CMD_KNOB,
+					    .arg = (int16_t)atoi(line + 1)};
+
+			msg_send(ipm, MSG_CMD, &c, sizeof(c));
+			printk("cmd %c %d\n", line[0], c.arg);
 			continue;
 		}
 		if (line[0] == 'B' && line[1] == 0) {

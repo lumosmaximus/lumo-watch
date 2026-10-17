@@ -17,7 +17,8 @@
 extern volatile bool trace_on;
 void trace_put(uint8_t ev, uint8_t a, uint16_t b);
 void trace_set(bool on);  /* from MSG_TRACE_CTL */
-void trace_flush(void);   /* main loop: send full batches to core 0 */
+void trace_flush_room(int room); /* send the batch if fewer than room events fit */
+static inline void trace_flush(void) { trace_flush_room(1); }
 
 static inline void trace_ev(uint8_t ev, uint8_t a, uint16_t b)
 {
@@ -29,4 +30,5 @@ static inline void trace_ev(uint8_t ev, uint8_t a, uint16_t b)
 static inline void trace_ev(uint8_t ev, uint8_t a, uint16_t b) {}
 static inline void trace_set(bool on) {}
 static inline void trace_flush(void) {}
+static inline void trace_flush_room(int room) {}
 #endif

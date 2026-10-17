@@ -33,10 +33,10 @@ void trace_put(uint8_t ev, uint8_t a, uint16_t b)
 	irq_unlock(key);
 }
 
-void trace_flush(void)
+void trace_flush_room(int room)
 {
-	if (batch[cur].n < TRACE_BATCH && trace_on) {
-		return; /* not full yet (when stopping, send what there is) */
+	if (batch[cur].n + room <= TRACE_BATCH && trace_on) {
+		return; /* enough room left (when stopping, send what there is) */
 	}
 	uint32_t key = irq_lock();
 	int send = cur;

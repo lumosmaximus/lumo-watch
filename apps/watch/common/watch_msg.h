@@ -21,6 +21,18 @@
 #define MSG_TEXT   9 /* core 0 -> core 1: now-playing text, a 2-bit alpha image */
 #define MSG_TRACE     10 /* core 1 -> core 0: a batch of trace events (common/trace.h) */
 #define MSG_TRACE_CTL 11 /* core 0 -> core 1: trace on/off */
+#define MSG_CMD       12 /* core 0 -> core 1: a scripted action (console "F", "Z", "W") */
+
+enum {
+	CMD_FACE = 1,  /* arg = face index */
+	CMD_BEZEL,     /* arg = clicks to turn the GMT bezel (signed) */
+	CMD_KNOB,      /* arg = degrees to turn the remote's knob (signed) */
+};
+
+struct msg_cmd {
+	uint8_t cmd;
+	int16_t arg;
+};
 #define TEXT_W     224 /* title rows 0-21, artist rows 22-39; 4 pixels per byte */
 #define TEXT_H     40
 #define TEXT_BYTES (TEXT_W * TEXT_H / 4)
