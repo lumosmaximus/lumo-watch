@@ -23,6 +23,7 @@
 #include <soc/spi_struct.h>
 
 #include "qspi_fast.h"
+#include "trace.h"
 
 #define CO_OP_CMD    0x02
 #define CO_OP_PIXELS 0x32
@@ -40,7 +41,12 @@ uint32_t qf_underruns;
 void qf_wait(void)
 {
 	if (busy) {
-		while (!spi_ll_usr_is_done(hw)) {
+		if (!spi_ll_usr_is_done(hw)) { /* the CPU stalls here until the DMA is done */
+			uint32_t t0 = trace_now();
+
+			while (!spi_ll_usr_is_done(hw)) {
+			}
+			trace_ev(TR_SPI_WAIT, 0, MIN(trace_now() - t0, 0xffff));
 		}
 		busy = false;
 		if (hw->dma_int_raw.outfifo_empty_err) {

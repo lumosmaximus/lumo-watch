@@ -26,6 +26,8 @@ zephyr_udc0: &usb_otg {
 		compatible = "zephyr,cdc-acm-uart";
 		/* a now-playing text frame is one ~3 KB line (tools/agent) */
 		rx-fifo-size = <4096>;
+		tx-fifo-size = <8192>; /* trace dumps are 640-byte lines in a burst */
+		hw-flow-control; /* poll_out waits for room instead of dropping bytes */
 	};
 
 	hid_media: hid_media {

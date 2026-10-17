@@ -1,0 +1,36 @@
+# Copyright (c) 2026 Adi Nandanamudi
+# SPDX-License-Identifier: Apache-2.0
+
+menu "Watch (core 1)"
+
+config WATCH_TRACE
+	bool "Event trace (T1/T0 on the console, tools/trace)"
+	default y
+
+# Each optimisation can be switched back off, to measure it against the
+# version before it (docs/optimization-log.md). Build with, for example,
+#   west build ... -- -Dwatch_remote_CONFIG_WATCH_FAST_SPI=n
+config WATCH_FAST_SPI
+	bool "Direct SPI register path for display writes (else the Zephyr driver)"
+	default y
+
+config WATCH_SPI_OVERLAP
+	bool "Compose the next box while the previous one is sent by DMA"
+	default y
+	depends on WATCH_FAST_SPI
+
+config WATCH_RING_RAM
+	bool "Keep the bezel ring strip in internal RAM (else read it from flash)"
+	default y
+
+config WATCH_SWEEP_GATE
+	bool "Skip the second-hand stage in boxes it cannot reach"
+	default y
+
+config WATCH_TE_LOCK
+	bool "Start frames on the panel's tearing-effect edge (else free-running)"
+	default y
+
+endmenu
+
+source "Kconfig.zephyr"

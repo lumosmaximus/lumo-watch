@@ -19,6 +19,8 @@
 #define MSG_KEY    7 /* core 1 -> core 0: send a media key to the computer (USB HID) */
 #define MSG_STATE  8 /* core 0 -> core 1: the computer's media state (tools/agent) */
 #define MSG_TEXT   9 /* core 0 -> core 1: now-playing text, a 2-bit alpha image */
+#define MSG_TRACE     10 /* core 1 -> core 0: a batch of trace events (common/trace.h) */
+#define MSG_TRACE_CTL 11 /* core 0 -> core 1: trace on/off */
 #define TEXT_W     224 /* title rows 0-21, artist rows 22-39; 4 pixels per byte */
 #define TEXT_H     40
 #define TEXT_BYTES (TEXT_W * TEXT_H / 4)

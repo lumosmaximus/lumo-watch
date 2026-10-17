@@ -32,6 +32,7 @@
 
 #include "../common/watch_msg.h"
 #include "usb_hid.h"
+#include "trace_store.h"
 
 static const struct device *const ipm = DEVICE_DT_GET(DT_NODELABEL(ipm0));
 static const struct device *const rtc = DEVICE_DT_GET(DT_ALIAS(rtc));
@@ -62,6 +63,10 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 		       mb.box_plain / 10, mb.box_plain % 10, mb.box_hands / 10, mb.box_hands % 10);
 		return;
 	}
+	if (id == MSG_TRACE) {
+		trace_batch(data, TRACE_BATCH * sizeof(struct trace_ev) + 1);
+		return;
+	}
 	if (id == MSG_KEY) {
 		usb_key(((volatile struct msg_key *)data)->key);
 		return;
@@ -79,6 +84,8 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 static void send_button(uint8_t btn)
 {
 	struct msg_button mb = {.btn = btn};
+
+	trace_rec(TR_BUTTON, btn, 0);
 	int ret = msg_send(ipm, MSG_BUTTON, &mb, sizeof(mb));
 
 	printk("button %u -> core 1 (%d)\n", btn, ret);
@@ -160,6 +167,7 @@ static void on_input(struct input_event *evt, void *user_data)
 			hold_since = 0;
 			hold_sent = hold_two = false;
 		}
+		trace_rec(TR_TOUCH, t.down | t.fingers << 1, (t.x >> 2) << 8 | (t.y >> 2));
 		msg_send(ipm, MSG_TOUCH, &t, sizeof(t));
 		/* log touches (down/up and finger-count changes) */
 		static uint8_t last_down, last_fingers;
@@ -214,6 +222,7 @@ static void send_time_on_edge(void)
 			      .hour = b.tm_hour, .min = b.tm_min, .sec = b.tm_sec,
 			      .wday = b.tm_wday};
 
+	trace_rec(TR_TIME_TX, 0, 0);
 	msg_send(ipm, MSG_TIME, &mt, sizeof(mt));
 	printk("time -> core 1: %04u-%02u-%02u %02u:%02u:%02u\n", mt.year, mt.month, mt.day,
 	       mt.hour, mt.min, mt.sec);
@@ -250,6 +259,14 @@ static void console_rx(void *a, void *b, void *c)
 		}
 		line[n] = 0;
 		n = 0;
+		if (line[0] == 'T' && (line[1] == '1' || line[1] == '0') && line[2] == 0) {
+			if (line[1] == '1') {
+				trace_start();
+			} else {
+				trace_stop_dump();
+			}
+			continue;
+		}
 		if (line[0] == 'B' && line[1] == 0) {
 			printk("rebooting to download mode\n");
 			usb_reboot_to_download();
@@ -270,6 +287,7 @@ static void console_rx(void *a, void *b, void *c)
 					memcpy(mt.data, img + off, mt.len);
 					msg_send(ipm, MSG_TEXT, &mt, sizeof(mt) - TEXT_CHUNK + mt.len);
 				}
+				trace_rec(TR_TEXT_LINE, 1, 0);
 				ok++;
 			} else {
 				bad++;
@@ -308,6 +326,8 @@ static void console_rx(void *a, void *b, void *c)
 					p++;
 				}
 			}
+			trace_rec(TR_HOST_STATE, (st.playing > 0) | (st.muted > 0) << 1,
+				  st.volume < 0 ? 0 : st.volume);
 			msg_send(ipm, MSG_STATE, &st, sizeof(st));
 			continue;
 		}
@@ -375,6 +395,10 @@ int main(void)
 	send_time_on_edge(); /* core 1 may not be listening yet: it says hello */
 
 	for (int n = 1;; n++) {
+		if (trace_dumping) {
+			k_msleep(100); /* the dump owns the console */
+			continue;
+		}
 		if (k_sem_take(&stats_sem, K_MSEC(2000)) == 0) {
 			/* frames = frames in the last second */
 			printk("core 1: %u fps, %u us/frame: %u px in %u boxes, composite %u us,"

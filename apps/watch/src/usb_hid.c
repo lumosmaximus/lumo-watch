@@ -27,6 +27,7 @@
 
 #include "../common/watch_msg.h"
 #include "usb_hid.h"
+#include "trace_store.h"
 
 #define REPORT_CONSUMER 1
 
@@ -113,6 +114,7 @@ static void key_thread(void *a, void *b, void *c)
 		}
 		uint16_t u = keymap[k].consumer;
 
+		trace_rec(TR_HID_KEY, k, hid_ready);
 		printk("hid key %u (usage 0x%02x)%s\n", k, u, hid_ready ? "" : " - host not ready");
 		const uint8_t press[] = {REPORT_CONSUMER, u & 0xff, u >> 8};
 		const uint8_t release[] = {REPORT_CONSUMER, 0, 0};

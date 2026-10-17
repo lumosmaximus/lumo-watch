@@ -43,6 +43,7 @@
 #include "speed_img.h"
 #include "knob_img.h"
 #include "qspi_fast.h"
+#include "trace.h"
 
 #define N      WATCH_SIZE
 #define CX     233.0f   /* centre, in pixel-edge coordinates */
@@ -60,7 +61,7 @@ static uint16_t bufs[2][BAND * N] __aligned(4);
 static uint16_t *buf = bufs[0];
 static int cur;
 static bool fast_spi; /* after setup: our own register-level writes */
-static bool qf_overlap = true; /* boxes go out while the next is composed */
+static bool qf_overlap = IS_ENABLED(CONFIG_WATCH_SPI_OVERLAP); /* boxes go out while the next is composed */
 
 /* ---- inputs from core 0 (written in the IPM interrupt) ------------------------- */
 
@@ -81,6 +82,11 @@ static volatile bool np_new;
 
 static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volatile void *data)
 {
+	trace_ev(TR_MSG_RX, id, 0);
+	if (id == MSG_TRACE_CTL) {
+		trace_set(((volatile struct msg_trace_ctl *)data)->on);
+		return;
+	}
 	if (id == MSG_TIME) {
 		memcpy(&base, (const void *)data, sizeof(base));
 		base_ms = k_uptime_get();
@@ -96,6 +102,7 @@ static void on_ipm(const struct device *dev, void *user_data, uint32_t id, volat
 			if (off + len == sizeof(np_img)) { /* the frame is complete */
 				np_ms = k_uptime_get();
 				np_new = true;
+				trace_ev(TR_TEXT_RX, 0, 0);
 			}
 		}
 	} else if (id == MSG_STATE) {
@@ -153,7 +160,14 @@ static int32_t ring_shift;
 /* the ring strip (palette indices) and palette, copied to internal RAM at boot:
  * a bezel click reads the strip all over, and random flash reads miss the cache
  */
+#ifdef CONFIG_WATCH_RING_RAM
 static uint8_t ring_q[WATCH_RING_ANG * WATCH_RING_RAD];
+static const uint8_t *ring_qp = ring_q;
+#define RING_USE(src) memcpy(ring_q, src, sizeof(ring_q))
+#else
+static const uint8_t *ring_qp; /* read straight from flash (A/B comparison) */
+#define RING_USE(src) (ring_qp = (src))
+#endif
 static uint16_t ring_pal[256];
 static const uint16_t *ring_palp = ring_pal;
 /* sweep hand's screen bounding box at its current angle */
@@ -261,7 +275,7 @@ static ALWAYS_INLINE void sec_cover(float s, float p, float *a_white, float *a_g
 
 /* ---- rendering one dirty box --------------------------------------------------- */
 
-static uint32_t prof_px, prof_comp, prof_write, prof_boxes;
+static uint32_t prof_px, prof_comp, prof_write, prof_boxes, prof_boxes_frame;
 
 /* ---- vector hands ------------------------------------------------------------
  * Hand space: s along the hand from the centre (pixels), p across it. Shapes
@@ -535,6 +549,7 @@ static void remote_row(uint16_t *o, int x0, int x1, int y);
 
 static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 {
+	trace_ev(TR_BOX_BEGIN, y0 / BAND, x0);
 	uint32_t pt0 = k_cycle_get_32();
 	const bool gmt_face = face == FACE_GMT;
 	const uint16_t *dial = (const uint16_t *)(gmt_face ? watch_dial :
@@ -549,8 +564,9 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 	const bool remote = face == FACE_REMOTE;
 	bool ring = (gmt_face || remote) &&
 		    fxm * fxm + fym * fym > (WATCH_BEZEL_IN - 1) * (WATCH_BEZEL_IN - 1);
-	const bool sweep_on = !remote && swb_x1 >= x0 && swb_x0 <= x1 && swb_y1 >= y0 &&
-			      swb_y0 <= y1;
+	const bool sweep_on = !remote && (!IS_ENABLED(CONFIG_WATCH_SWEEP_GATE) ||
+					  (swb_x1 >= x0 && swb_x0 <= x1 && swb_y1 >= y0 &&
+					   swb_y0 <= y1));
 	/* plain-shaft stretch of the sweep hand ends at its lume dot, if any */
 	const float d0 = sw.dot ? sw.dot : (sw.loz ? sw.loz : sw.tip + 10);
 
@@ -639,7 +655,7 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 					if (t < 0) {
 						t += total;
 					}
-					*op++ = ring_palp[ring_q[t]];
+					*op++ = ring_palp[ring_qp[t]];
 				}
 				idx += sb - sa + 1;
 			}
@@ -748,6 +764,7 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 	};
 	uint32_t pt1 = k_cycle_get_32();
 
+	trace_ev(TR_BOX_END, h, w);
 	if (fast_spi) {
 		qf_write(x0, y0, w, h, buf); /* returns as soon as the DMA runs */
 		if (!qf_overlap) {
@@ -762,6 +779,7 @@ static void IRAM_ATTR render_box(int x0, int y0, int x1, int y1)
 	prof_write += k_cycle_get_32() - pt1;
 	prof_px += w * h;
 	prof_boxes++;
+	prof_boxes_frame++;
 }
 
 /* ---- dirty bands ---------------------------------------------------------------- */
@@ -815,6 +833,7 @@ static int render_bands(void)
 		int x0 = band_x0[b] & ~1, x1 = band_x1[b] | 1;
 
 		render_box(x0, b * BAND, MIN(x1, N - 1), MIN(b * BAND + BAND - 1, N - 1));
+		trace_flush(); /* only sends when a batch is full */
 		n++;
 	}
 	return n;
@@ -823,6 +842,7 @@ static int render_bands(void)
 /* The bezel ring, band by band: two spans per band where the dial is inside. */
 static void render_ring(void)
 {
+	trace_ev(TR_RING_BEGIN, 0, 0);
 	for (int b = 0; b < NBANDS; b++) {
 		int y0 = b * BAND, y1 = MIN(y0 + BAND - 1, N - 1);
 		/* widest outer-circle span and narrowest inner-circle span in this band */
@@ -849,6 +869,7 @@ static void render_ring(void)
 				   MIN(((int)CX + ho + 1) | 1, N - 1), y1);
 		}
 	}
+	trace_ev(TR_RING_END, 0, 0);
 }
 
 /* ---- touch: turning the bezel ----------------------------------------------------- */
@@ -902,6 +923,9 @@ static inline bool te_high(void)
 /* Wait for the start of the next panel refresh (TE rising edge). */
 static void wait_te(bool have_te)
 {
+	if (!IS_ENABLED(CONFIG_WATCH_TE_LOCK)) {
+		return; /* free-running (A/B comparison) */
+	}
 	if (!have_te) {
 		k_msleep(16);
 		return;
@@ -912,6 +936,7 @@ static void wait_te(bool have_te)
 	}
 	while (!te_high() && k_uptime_get_32() - t0 < 25) {
 	}
+	trace_ev(TR_TE, 0, 0);
 }
 
 static bool detect_te(void)
@@ -938,6 +963,7 @@ static bool detect_te(void)
 static void face_setup(int f)
 {
 	face = f;
+	trace_ev(TR_FACE, f, 0);
 	memset(hands, 0, sizeof(hands));
 	if (f == FACE_REMOTE) {
 		nhands = 0; /* no hands: the bezel knob and buttons only */
@@ -1414,6 +1440,7 @@ static void remote_key(uint8_t key)
 {
 	struct msg_key mk = {.key = key};
 
+	trace_ev(TR_KEY_TX, key, 0);
 	msg_send(ipm, MSG_KEY, &mk, sizeof(mk));
 }
 
@@ -1449,7 +1476,7 @@ static void remote_enter(void)
 		rm_prev_face = face;
 		rm_saved_bezel = bezel_rot;
 	}
-	memcpy(ring_q, knob_q, sizeof(ring_q)); /* the knob replaces the bezel strip */
+	RING_USE(knob_q); /* the knob replaces the bezel strip */
 	face_setup(FACE_REMOTE);
 	rm_bright = rm_active = false;
 	rm_pressed = -1;
@@ -1459,7 +1486,7 @@ static void remote_enter(void)
 
 static void remote_leave_ring(void)
 {
-	memcpy(ring_q, watch_ring_q, sizeof(ring_q)); /* the GMT bezel again */
+	RING_USE(watch_ring_q); /* the GMT bezel again */
 	ring_palp = ring_pal;
 	bezel_rot = rm_saved_bezel;
 }
@@ -1666,7 +1693,7 @@ static uint16_t ring_at(int x, int y, uint16_t bg)
 			if (t < 0) {
 				t += WATCH_RING_ANG * WATCH_RING_RAD;
 			}
-			return ring_palp[ring_q[t]];
+			return ring_palp[ring_qp[t]];
 		}
 		if (sp[1] >= sp[0]) {
 			idx += sp[1] - sp[0] + 1;
@@ -1838,7 +1865,7 @@ static void handle_buttons(void)
 
 int main(void)
 {
-	memcpy(ring_q, watch_ring_q, sizeof(ring_q));
+	RING_USE(watch_ring_q);
 	memcpy(ring_pal, watch_ring_pal, sizeof(ring_pal));
 	memcpy(knob_pal, knob_pal_flash, sizeof(knob_pal));
 	for (int k = 0; k < RM_VIS_N; k++) { /* pastel rainbow for the bars */
@@ -1925,7 +1952,7 @@ int main(void)
 	bool have_te = detect_te();
 	int64_t hello_ms = 0;
 
-	fast_spi = true; /* the Zephyr driver has set SPI2 + GDMA up; take over */
+	fast_spi = IS_ENABLED(CONFIG_WATCH_FAST_SPI); /* the Zephyr driver has set SPI2 + GDMA up; take over */
 	/* the cost of one bezel click: the whole ring, as the loop does it */
 	{
 		struct msg_bench rb = {0};
@@ -1957,12 +1984,15 @@ int main(void)
 	uint32_t frames = 0, busy_us = 0, last_stats = k_uptime_get_32(), max_us = 0;
 
 	while (1) {
+		trace_flush(); /* trace batches go to core 0 between frames */
 		wait_te(have_te);
 		uint32_t t0 = k_cycle_get_32();
 
+		trace_ev(TR_FRAME_BEGIN, face, (uint16_t)frames);
 		handle_buttons();
 		if (face == FACE_REMOTE) {
 			remote_frame();
+			trace_ev(TR_FRAME_END, 0, k_cyc_to_us_floor32(k_cycle_get_32() - t0) / 10);
 			continue;
 		}
 		if (base_ms < 0 && k_uptime_get() - hello_ms > 1000) {
@@ -2021,6 +2051,8 @@ int main(void)
 
 		uint32_t us = k_cyc_to_us_floor32(k_cycle_get_32() - t0);
 
+		trace_ev(TR_FRAME_END, prof_boxes_frame, us / 10);
+		prof_boxes_frame = 0;
 		busy_us += us;
 		max_us = MAX(max_us, us);
 		frames++;
