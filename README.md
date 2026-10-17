@@ -22,7 +22,9 @@ Two cores, two jobs. Core 0 runs the sensors, buttons, time and USB. Core 1 runs
 
 ![Cores and memory](docs/diagrams/02-cores-and-memory.png)
 
-The first face used a GUI library: 12 to 26 fps, and a second hand that hopped between pixels.
+The first face used a GUI library: 12 to 26 fps, and a second hand that hopped between pixels. Eight steps later it was 59, steady:
+
+![How smooth it got, step by step](docs/figures/fps-journey.webp)
 
 ## Making it glide
 
@@ -42,14 +44,20 @@ Drive the SPI from the registers instead of the driver (3.4 ms → 0.5 ms a fram
 |---|---|
 | ![no overlap: 2 ms of waiting a frame](docs/data/clips/overlap_before.gif) | ![overlap: 0.9 ms](docs/data/clips/overlap_after.gif) |
 
-Hands as vector shapes with analytic anti-aliasing; the bezel as a polar lookup table pre-blended and palette-compressed into internal RAM, so a turn is an index offset (37 ms → 14 ms a click).
+Hands as vector shapes with analytic anti-aliasing; the bezel as a polar lookup table pre-blended and palette-compressed into internal RAM, so a turn is an index offset.
+
+![Redrawing the turning ring: 90 ms to 14](docs/figures/bezel-click.webp)
 
 | ![bezel strip read from flash](docs/data/clips/bezel_before.gif) | ![bezel strip in RAM](docs/data/clips/bezel_after.gif) |
 |---|---|
 
 ![One frame on core 1](docs/diagrams/04-render-pipeline.png)
 
-Result: **59-60 fps** locked to the panel, 9-13 ms of work in a 16.7 ms frame. The dip that remains: the second hand passing over the other hands costs up to 10 ms of hand shading, a few frames a minute.
+Result: **59-60 fps** locked to the panel, 9-13 ms of work in a 16.7 ms frame, and every "before" above measured by rebuilding without that one change:
+
+![Each frame gets 16.7 ms; what happens if we undo each improvement](docs/figures/frame-budget.webp)
+
+The dip that remains: the second hand passing over the other hands costs up to 10 ms of hand shading, a few frames a minute.
 
 ![the hands crossing](docs/data/clips/hands_cross.gif)
 
