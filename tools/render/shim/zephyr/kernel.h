@@ -8,6 +8,7 @@
 
 extern int64_t host_time_ns;
 void host_advance_ns(int64_t ns);
+void host_on_wait(void); /* the compositor is waiting outside the frame loop (picker) */
 
 static inline int64_t k_uptime_get(void) { return host_time_ns / 1000000; }
 static inline uint32_t k_uptime_get_32(void) { return (uint32_t)(host_time_ns / 1000000); }
@@ -39,5 +40,5 @@ static inline int k_msgq_put(struct k_msgq *q, const void *d, k_timeout_t t) {
 	(void)t; if (q->count == q->max) return -1;
 	memcpy(q->buf + q->tail * q->msg_size, d, q->msg_size); q->tail = (q->tail + 1) % q->max; q->count++; return 0; }
 static inline int k_msgq_get(struct k_msgq *q, void *d, k_timeout_t t) {
-	if (q->count == 0) { if (t.ms > 0) host_advance_ns((int64_t)t.ms * 1000000); return -1; }
+	if (q->count == 0) { if (t.ms > 0) { host_advance_ns((int64_t)t.ms * 1000000); host_on_wait(); } return -1; }
 	memcpy(d, q->buf + q->head * q->msg_size, q->msg_size); q->head = (q->head + 1) % q->max; q->count--; return 0; }

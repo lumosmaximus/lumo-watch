@@ -44,7 +44,9 @@ SCENES = {
     "remote_muted": (["--at", "0:face=3", "--at", "2:state=63,1,85,1"], 20, 1, 1),
     "remote_brightness": (["--at", "0:face=3", "--at", "2:state=63,0,85,1",
                            "--at", "5:touch=233,381,1", "--at", "8:touch=233,381,0"], 30, 1, 1),
-    "picker": (["--at", "0:face=0", "--at", "2:button=3"], 20, 1, 1),
+    # BOOT held: the picker; frames while it waits count too; a tap picks the remote
+    "picker": (["--at", "0:face=0", "--at", "2:button=3", "--at", "40:touch=319,319,1",
+                "--at", "42:touch=319,319,0"], 20, 1, 1),
 }
 
 

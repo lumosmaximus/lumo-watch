@@ -161,6 +161,14 @@ static void frame_edge(void)
 	host_advance_ns(FRAME_NS);
 }
 
+/* The picker waits in its own loop (no TE): count those waits as frames too,
+ * so they are saved and scripted actions (a tap on a thumbnail) can land.
+ */
+void host_on_wait(void)
+{
+	frame_edge();
+}
+
 /* wait_te() polls GPIO_IN_REG: high, low, high reads one TE cycle */
 uint32_t host_reg_read(uint32_t reg)
 {
