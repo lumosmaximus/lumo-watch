@@ -1,110 +1,91 @@
 # lumo-watch
 
-A dual-core Zephyr watch and USB media knob for the Waveshare
-ESP32-S3-Touch-AMOLED-1.75.
+**One-line summary:** a dual-core smartwatch on Zephyr whose second hand glides at the panel's 60 Hz, with a touch-turned bezel, three faces, and a mode that turns it into a USB volume knob and media remote for a laptop.
 
-## The board
+![The GMT face, second hand gliding](docs/renders/gmt.gif)
 
-Zephyr board support, drivers and apps for the
-[Waveshare ESP32-S3-Touch-AMOLED-1.75](https://docs.waveshare.com/ESP32-S3-Touch-AMOLED-1.75)
-(466x466 round AMOLED, CO5300 + CST9217, AXP2101, ES8311/ES7210, QMI8658,
-PCF85063, TCA9554, TF card).
+## What problem it solves
 
-The main app is a watch with a gliding second hand at the panel's 60 Hz,
-a touch-turned bezel, two chronograph faces, and a USB media remote for a
-computer. How it got smooth, step by step with measurements, is in
-[docs/optimization-log.md](docs/optimization-log.md).
+Cheap round AMOLED boards are everywhere now, and the demos that ship with them all do the same thing: a GUI library redraws the screen at 12 to 25 fps and a second hand that hops from pixel to pixel. I wanted the opposite: a hand that moves 0.1 degree every frame, 60 times a second, with no tearing, on a chip with 128 KB of RAM to spare for the display. Then, since the thing sat on my desk next to the laptop, I wanted the bezel to be a volume knob.
 
-Both cores are used, as AMP (two Zephyr images, built together with sysbuild):
+The hardware is the Waveshare ESP32-S3-Touch-AMOLED-1.75: a 466x466 round AMOLED (CO5300 controller over QSPI), capacitive touch, a PMIC, codecs, an IMU, an RTC, and the ESP32-S3's two cores. Everything here runs on Zephyr RTOS, in C, with Python tooling on the computer. No brand marks: the faces are "in the style of" a GMT dive watch and a moon-watch chronograph.
 
-- **core 0 (PROCPU)**: the shared I2C bus (power, RTC, touch, IMU, codecs),
-  buttons, USB (console + media keys), and the time
-- **core 1 (APPCPU)**: the display only, with its own small compositor (no
-  LVGL): dirty bands, vector hands, a polar lookup for the bezel, SPI driven
-  from the registers with DMA overlapping the drawing, frames locked to the
-  panel's tearing-effect pin
+## System architecture
 
-The cores talk through the IPM mailbox (see `apps/watch/common/watch_msg.h`).
+The two cores run as **asymmetric multiprocessing**: two separate Zephyr images, built together, each with its own kernel.
 
-## Build
+- **Core 0** owns the I2C bus (touch, RTC, power, expander, IMU), the buttons, the time, and the USB port, which it turns into a composite device: a serial console plus a HID media-key interface.
+- **Core 1** does one thing: the display. No GUI library. A small compositor redraws only the 8-row bands that changed, draws the hands as anti-aliased vector shapes, turns the bezel through a precomputed polar lookup, and drives the SPI peripheral and DMA from the registers so the transfer of one band overlaps the drawing of the next. Frames start on the panel's tearing-effect pulse.
+- Between them: the chip's IPM mailbox (512 bytes a message, one slot per direction) carrying the time, touches, buttons, media keys, the computer's state, and the now-playing text.
 
-This repo is a Zephyr module; use it from an existing west workspace with the
-Espressif HAL:
+![Architecture](docs/diagrams/02-cores-and-memory.png)
+![One frame on core 1](docs/diagrams/04-render-pipeline.png)
 
-```
-west build --sysbuild -d build-watch -b esp32s3_touch_amoled_1_75/esp32s3/procpu \
-  path/to/amoled_175/apps/watch -- -DBOARD_ROOT=path/to/amoled_175
-```
+The diagram prompts (and every number in them) are in [`docs/diagrams/`](docs/diagrams/).
 
-`--sysbuild` builds both images; the core-1 image goes into the appcpu
-partition (0xbc0000).
+## What it does
 
-## Flash
+| | |
+|---|---|
+| ![GMT](docs/renders/gmt_bezel_turn.gif) | **GMT face.** Two-tone 24-hour bezel that turns by touch and clicks every minute, date, gliding seconds, a 24-hour hand. |
+| ![Chronograph](docs/renders/chrono_white.gif) | **Chronographs**, black or white. Fixed tachymeter, running seconds at 9, 30-minute and 12-hour counters. PWR starts and stops, BOOT resets. |
+| ![Remote](docs/renders/remote_playing.gif) | **The remote.** The ring is a knob (one key per 15 degrees, a couple of turns from silent to full), mute, previous, next, play/pause, brightness. With a small helper app on the computer it shows the real volume, mute and play state, and what is playing, scrolling when long. |
+| ![Picker](docs/renders/picker.png) | **The picker**: hold BOOT 3 s. Two fingers held (or one finger still in the middle) opens and closes the remote. |
 
-For `apps/watch` use the script, not `west flash`:
+Those pictures are not photos: the display code is compiled for the computer as well (`tools/render/`), so every render is what the panel shows, pixel for pixel.
 
-```
-sh path/to/amoled_175/tools/flash.sh build-watch
-```
+## Hardware used
 
-The watch turns the USB-C port into its own USB device, which switches off the
-chip's USB-Serial-JTAG (the usual flashing port). The script asks the running
-watch to reboot into the ROM's download mode and writes both images in one
-esptool run. (`west flash` resets between the two images, and the second one
-then fails.) If the watch is not running, hold BOOT while plugging it in.
+- Waveshare ESP32-S3-Touch-AMOLED-1.75 (-B, without GPS): ESP32-S3R8 (two Xtensa LX7 cores at 240 MHz, 8 MB octal PSRAM), 16 MB flash
+- 1.75" round AMOLED, 466x466, CO5300 over QSPI at 80 MHz; CST9217 touch; AXP2101 PMIC; PCF85063 RTC; QMI8658 IMU; TCA9554 expander; ES8311/ES7210 codecs (unused so far); TF card
+- A USB-C cable to the computer, and that is all
 
-`apps/amp_hello` and `apps/hw_test` keep USB-Serial-JTAG: `west flash` works.
+## Firmware / software used
 
-## Apps
+- Zephyr RTOS (C), sysbuild for the two images, out-of-tree board definition and drivers written for this board (CO5300 display, CST9217 touch, ES7210/ES8311)
+- The Espressif HAL for the SPI, GDMA and system-timer registers
+- Zephyr's USB device stack: CDC-ACM + HID Consumer Control
+- Python with Pillow for the dial, bezel and knob generators; pyserial, AppleScript and DisplayServices for the macOS helper (`tools/agent/`); matplotlib for trace clips
 
-- `apps/watch`: the watch.
-  - Faces: GMT (rotating bezel, 1-minute clicks, date), and a chronograph in
-    black or white (fixed tachymeter, subdials; PWR starts/stops, BOOT resets).
-    Hold BOOT 3 s for the face picker.
-  - Media remote (hold two fingers, or one finger still in the middle, or pick
-    it in the picker): a knob for volume (or brightness) that takes a couple
-    of turns from silent to full, mute, previous/next, play/pause. The keys
-    are standard USB HID media keys: Windows and macOS need no app.
-  - The time comes from the RTC; with no battery fitted it is lost when
-    unplugged, so set it over USB with `tools/settime.py`.
-- `apps/hw_test`: checks every peripheral at boot, then prints a live line:
-  mic levels (ES7210), IMU, BOOT/PWR buttons, touch (CST9217), RTC, TF card
-  (SDMMC), AXP2101 power, core 1 alive. Speaker output is not tested.
-- `apps/amp_hello`: dual-core bring-up. Core 0 scans I2C, dumps the AXP2101
-  rails and pings core 1, which answers with its uptime and core ID.
+## Challenges and solutions
 
-## Tools
+**A full frame does not fit.** 466x466x2 bytes is 434 KB, about 11 ms of bus time per frame: a full redraw every 16.7 ms would leave 5 ms for everything else, and there is no RAM for a frame buffer on the display core anyway. So the compositor keeps a list of dirty 8-row bands, as wide as needed, and redraws only those. A quiet chronograph is ten small bands a frame, under 2 ms. ([trace](docs/data/traces/chrono_white_idle.html))
 
-- `tools/flash.sh`: flash both watch images (see above).
-- `tools/settime.py`: set the watch's clock from the computer
-  (`uv run --with pyserial tools/settime.py`).
-- `tools/agent/agent_mac.py`: optional helper on a Mac so the remote follows
-  the computer: volume/brightness level, mute and play state, and the title
-  and artist of what is playing (YouTube in Chrome or Edge, Spotify, Music),
-  scrolling when long (`uv run tools/agent/agent_mac.py`). For YouTube, turn
-  on View > Developer > Allow JavaScript from Apple Events in the browser.
-- `tools/watchface/`: generators for the dial, bezel and knob images
-  (`watch.py`, `chrono.py`, `knob.py`; Pillow, run with `uv`).
-- `tools/capture/cap.py`: record the watch's serial output.
+**Cadence beats average frame rate.** A version that averaged 59 fps looked worse than a steady 30, because frames just over budget missed a refresh now and then and the eye sees the change of rhythm. Every later step attacked the worst frame, not the mean, and measured it on the device.
 
-## Drivers in this repo
+**The driver was the bottleneck.** Each band went through three SPI driver transactions with the DMA reconfigured each time: ~100 us of overhead, 35 times a frame. Driving the SPI peripheral's own command and address phases from the registers, with two band buffers so the DMA sends one while the CPU composes the next, took display writes from 3.4 ms to 0.5 ms per frame. ([before](docs/data/traces/ab_zephyr-spi_gmt_idle.html) / [after](docs/data/traces/gmt_idle.html))
 
-- `chipone,co5300-qspi`: CO5300 AMOLED over QSPI (display subsystem)
-- `hynitron,cst9217`: CST9217 touch controller (input subsystem; also reports
-  the finger count)
-- `everest,es7210`, `everest,es8311`: mic ADC and speaker codec (audio_codec)
+**Rotating the bezel.** Bilinear rotation of a 466x466 image cost 20 to 90 ms a turn. The ring is now an unwrapped polar strip (1440 angles x 43 radii), pre-blended onto what lies beneath so every entry is opaque, quantised to 256 colours (62 KB, small enough for internal RAM), plus a 16-bit index per ring pixel. Turning the bezel is an index offset; a click repaints the whole ring in 14 to 16 ms. The same code draws the remote's knob from a different strip.
 
-## Notes
+**Two cores disagreeing about memory.** Core 0's image and core 1's image computed the end of RAM from two different boot formats, and the regions overlapped by 18 KB. Found in the linker maps after a corruption hunt; fixed in the board config.
 
-- Watch faces are generic styles: no brand names or logos.
-- The board config reserves a little more RAM on core 0 than Zephyr does,
-  because Zephyr's simple-boot image placed core 0's RAM 18 KB into core 1's
-  (see `boards/.../Kconfig.defconfig`).
-- TF card: some cards answer but never finish initialising (an 8 GB card
-  stayed busy on ACMD41 forever); a 16 GB SDHC card works.
-- The USB VID/PID is the pid.codes test pair (1209:0001): fine on your own
-  desk, not for a product.
+**Lost messages.** The ESP32 mailbox driver does not queue: a second send overwrites an unread message. The "open the remote" gesture was overwritten by the touch update sent microseconds later, almost every time, while button presses (sent alone) always worked. Sends are now serialised with time for the other core to copy each one out. Then the now-playing image (2240 bytes) hit the mailbox's 512-byte limit and had to be chunked.
 
-## Licence
+**One USB port, two controllers.** The chip's flashing port and the OTG controller share the USB pins. Once the watch is its own USB device, the flashing port is gone and the second of the two images never gets written. A console command reboots into the ROM's download mode and a script writes both images in one pass. A keyboard interface for brightness keys also made macOS open its keyboard-identification dialog on every plug-in; brightness goes as a Consumer Control key now.
 
-Apache-2.0 (see [LICENSE](LICENSE)).
+**The watch has no fonts.** The display core has 3 KB of RAM to spare. The helper on the laptop draws the title and artist as a 224x40 image at 2 bits per pixel and streams it over the serial port, 12 frames a second when the line scrolls.
+
+**Seeing a frame.** Per-second averages hid all of this, so both cores got an event tracer: 8-byte events stamped from the one hardware timer both cores can read, batched over the mailbox, dumped over USB, and turned into a page you can play and scrub. Every optimisation also has a build switch so the version before it can be traced on the same scripted scenario. The full table is in [the log](docs/optimization-log.md#17-before-and-after-measured-the-same-way).
+
+## Final results
+
+| | |
+|---|---|
+| frame rate | 59-60 fps, locked to the panel (LVGL first attempt: 12-26 fps) |
+| typical frame work, GMT face | 9-13 ms of 16.7 |
+| compositor cost | 315 -> 107 CPU cycles per pixel |
+| display writes | 3.4 -> 0.5 ms per frame |
+| bezel click | 37 -> 14 ms (one missed frame) |
+| chronograph faces | 60 fps at ~11 ms per frame, chronograph running |
+| remaining dip | the hands stage swings 3.8-10 ms within each minute as the second hand passes over the other hands: a few frames at 30 fps per minute. Next fix known (a tighter redraw area for the second hand). |
+| RAM on the display core | 97% used |
+
+The whole journey, step by step with the raw captures, is in [`docs/optimization-log.md`](docs/optimization-log.md) and [`docs/data/`](docs/data/). The interactive traces are in [`docs/data/traces/`](docs/data/traces/README.md).
+
+**Part 2** will replace the USB helper with a BLE companion app (state, titles and time over the air), add Wi-Fi for now-playing information from the network, an ambient visualiser mode, and remembering the face across resets. Ideas live in [`docs/ideas.md`](docs/ideas.md).
+
+## Links
+
+- Source: this repository ([building and flashing](docs/BUILD.md))
+- Traces, renders and diagrams: [`docs/`](docs/)
+- Licence: Apache-2.0
