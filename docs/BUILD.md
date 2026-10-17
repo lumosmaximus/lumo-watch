@@ -86,6 +86,10 @@ then fails.) If the watch is not running, hold BOOT while plugging it in.
   (`watch.py`, `chrono.py`, `knob.py`; Pillow, run with `uv`).
 - `tools/capture/cap.py`: record the watch's serial output.
 
+- `tools/trace/`: event tracer host side (capture, interactive timeline, before/after builds); see its README.
+- `tools/render/`: the display code compiled for the computer, for pixel-exact screenshots and clips.
+- `tools/trace/ab_build.sh`: builds the watch with each optimisation switched off (`apps/watch/remote/Kconfig`).
+
 ## Drivers in this repo
 
 - `chipone,co5300-qspi`: CO5300 AMOLED over QSPI (display subsystem)

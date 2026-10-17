@@ -13,6 +13,7 @@ Waveshare **ESP32-S3-Touch-AMOLED-1.75**. A 1.75" round AMOLED, 466x466, driven 
 One number ran the whole project: a full frame is 434 KB, about **11 ms of bus time**. Redrawing the screen 60 times a second is therefore not a plan, it is a wish. Everything below is what you do instead.
 
 ![Device photo: the board, front and back](docs/photos/board.jpg)
+![Device photo: the watch in a hand, for scale](docs/photos/size.jpg)
 ![Hardware diagram](docs/diagrams/01-hardware.webp)
 
 Zephyr RTOS rather than the vendor SDK, so that anyone can clone this and build it with the standard tools; that meant writing the board definition and four drivers first. The CO5300 wants its commands bit-expanded onto one data line inside quad transactions, which no existing driver does. The CST9217 touch chip only interrupts on first contact and about once a second after that, so the driver polls until the finger lifts; it also reports how many fingers, which the gestures use. Two codec drivers came along for a later life as a microphone.
@@ -89,10 +90,13 @@ No image editor was involved. Python scripts draw the dials, the bezel and the k
 The bezel turns under your finger and clicks every minute, which is deeply satisfying for no good reason. Two chronographs, black and white: PWR starts and stops, BOOT resets. Hold BOOT for the face picker. Hold two fingers on the glass and the watch stops being a watch.
 
 ![Device photo: turning the bezel](docs/photos/bezel.jpg)
+![Device photo: the face picker](docs/photos/picker.jpg)
 
 ## Volume, play, skip
 
 ![Device photo: knob in hand, laptop volume overlay visible](docs/photos/knob.jpg)
+![Device photo: brightness mode, the knob amber, the laptop dimmed behind](docs/photos/brightness.jpg)
+![Device photo: MUTED in red](docs/photos/muted.jpg)
 ![the remote](docs/renders/remote_playing.gif)
 
 Plug it into a laptop and it is a USB media device, the same kind as the volume keys on a keyboard, so Windows and macOS need no driver and ask no questions. The ring is a knob: one key per 15 degrees, a couple of turns from silent to full, like a wheel from a music player you may remember. Mute (the button turns red and says so), previous, next, play/pause with a rainbow visualiser that bounces while something plays and fades when it stops, and a sun button that turns the knob amber and makes it adjust screen brightness until you press it again or leave it alone for 30 s. A small helper on the laptop sends back the real volume, mute and play state and what is playing, which the watch shows as a level meter and a scrolling title. [`apps/watch/src/usb_hid.c`](apps/watch/src/usb_hid.c) · [`tools/agent/agent_mac.py`](tools/agent/agent_mac.py)
@@ -111,7 +115,7 @@ The helper, `tools/agent/agent_mac.py`, is the rest of the return path. Four tim
 
 Serial lines are fine for a desk; a product would use a raw HID report for the same traffic and never show a COM port. [`tools/settime.py`](tools/settime.py) · [`tools/agent/agent_mac.py`](tools/agent/agent_mac.py) · [`apps/watch/src/main.c`](apps/watch/src/main.c) (the console parser)
 
-![Video: plugging in, setting the time, the title appearing](docs/photos/helper.jpg)
+![Device photo: the title on the watch, the video playing behind it](docs/photos/helper.jpg)
 
 ## Seeing it: traces, renders, diagrams
 

@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Adi Nandanamudi
+# SPDX-License-Identifier: Apache-2.0
+"""Record the watch's console for N seconds, resetting the board first.
+
+    uv run --with pyserial tools/capture/cap.py 30 > capture.txt
+
+Used for the per-second stats captures in docs/data/*.txt. Resets the board
+through the USB-Serial-JTAG DTR/RTS lines, so it only works on the chip's
+flashing port (apps/amp_hello, apps/hw_test); the watch app owns the USB port
+itself, so for it use tools/trace/capture.py instead.
+"""
 import serial, time, glob, re, sys
 dur=float(sys.argv[1])
 def op():
